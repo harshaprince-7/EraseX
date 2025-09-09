@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { User, MoreVertical } from "lucide-react";
+import { User, MoreVertical, Sun, Moon, Shield, Lock } from "lucide-react";
 import "./App.css";
-
 
 interface Drive {
   name: string;
@@ -22,8 +21,12 @@ function App() {
   const [username, setUsername] = useState("John Doe");
   const [email, setEmail] = useState("john.doe@email.com");
 
-  // NEW: Track selected wipe mode
+  // Track selected wipe mode
   const [selectedWipe, setSelectedWipe] = useState<string | null>(null);
+
+  // Privacy & Security settings
+  const [privacyMode, setPrivacyMode] = useState(false);
+  const [enableEncryption, setEnableEncryption] = useState(false);
 
   const CORRECT_PIN = "1234";
 
@@ -79,56 +82,76 @@ function App() {
   };
 
   return (
-    <main className={`container theme-${theme}`}>
-      {/* Header */}
-      <header className="header">
-        <h1>Secure Wipe Utility</h1>
-        <div className="header-actions">
-          {/* Profile Icon */}
-          <div className="profile-wrapper">
-            <User className="icon" onClick={toggleProfile} />
-            {showProfile && (
-              <div className="profile-dropdown">
-                <img
-                  src="https://via.placeholder.com/60"
-                  alt="Profile"
-                  className="profile-avatar"
-                />
-                <div className="profile-info">
-                  <label>Username</label>
-                  <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                  />
-                  <label>Email</label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
+    <main className={`app-layout theme-${theme}`}>
+      {/* Top Bar */}
+      <header className="topbar">
+        <h1>Secure Wipe</h1>
+      </header>
 
-                </div>
-                <button className="logout-btn">Change email</button><br/>
-                <button
-                  className="logout-btn"
-                  onClick={() => {
-                    handleLogout();
-                    closeProfile();
-                  }}
-                >
-                  Logout
-                </button>
-              </div>
-            )}
+      {/* Sidebar */}
+      <aside className="sidebar">
+        {/* Profile */}
+        <div>
+          <div className="profile-header" onClick={toggleProfile}>
+            <User className="sidebar-icon" />
+            <span className="sidebar-username">{username}</span>
           </div>
 
-          {/* Settings Icon */}
-          <div className="settings-wrapper">
-            <MoreVertical className="icon" onClick={() => setShowSettings(true)} />
+          {showProfile && (
+            <div className="profile-dropdown">
+              <img
+                src="https://via.placeholder.com/60"
+                alt="Profile"
+                className="profile-avatar"
+              />
+              <div className="profile-info">
+                <label>Username</label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                />
+                <label>Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+              <button className="logout-btn">Change email</button>
+              <button
+                className="logout-btn"
+                onClick={() => {
+                  handleLogout();
+                  closeProfile();
+                }}
+              >
+                Logout
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="sidebar-divider"></div>
+
+        {/* Menu */}
+        <div>
+          <h3>Menu</h3>
+
+          <div className="sidebar-item" onClick={() => setShowSettings(true)}>
+            <MoreVertical className="sidebar-icon" />
+            <span>Settings</span>
+          </div>
+
+          <div
+            className="sidebar-item sidebar-important"
+            onClick={() => alert("🔒 Verifying your certificate...")}
+          >
+            <span className="sidebar-icon">✅</span>
+            <span>Verify Certificate</span>
           </div>
         </div>
-      </header>
+      </aside>
 
       {/* Main Content */}
       <section className="content">
@@ -152,22 +175,25 @@ function App() {
               className={`wipe-option ${selectedWipe === "Clear" ? "selected" : ""}`}
               onClick={() => setSelectedWipe("Clear")}
             >
-              <strong>Clear</strong><br/>
-              <span>Quick removal(Recoverable)</span>
+              <strong>Clear</strong>
+              <br />
+              <span>Quick removal (Recoverable)</span>
             </div>
             <div
               className={`wipe-option ${selectedWipe === "Purge" ? "selected" : ""}`}
               onClick={() => setSelectedWipe("Purge")}
             >
-              <strong>Purge</strong><br/>
-              <span>Secure Wipe(harder to recover)</span>
+              <strong>Purge</strong>
+              <br />
+              <span>Secure Wipe (harder to recover)</span>
             </div>
             <div
               className={`wipe-option ${selectedWipe === "Destroy" ? "selected" : ""}`}
               onClick={() => setSelectedWipe("Destroy")}
             >
-              <strong>Destroy</strong><br/>
-              <span>Cryptogrpahic erase(irrecoverable)</span>
+              <strong>Destroy</strong>
+              <br />
+              <span>Cryptographic erase (irrecoverable)</span>
             </div>
           </div>
 
@@ -184,9 +210,7 @@ function App() {
           <a href="#">Contact</a>
           <a href="#">Help</a>
         </nav>
-        <small>
-          © {new Date().getFullYear()} Secure Wipe Utility. All rights reserved.
-        </small>
+        <small>© {new Date().getFullYear()} Secure Wipe Utility. All rights reserved.</small>
       </footer>
 
       {/* PIN Modal */}
@@ -214,13 +238,45 @@ function App() {
         <div className="modal">
           <div className="modal-content">
             <h2>Settings</h2>
+
+            {/* Theme Toggle */}
             <div className="settings-section">
               <label>Theme</label>
-              <select value={theme} onChange={(e) => setTheme(e.target.value)}>
-                <option value="dark-blue">Dark Blue</option>
-                <option value="green-soft">Green Soft</option>
-              </select>
+              <div className="theme-toggle">
+                <Sun
+                  size={28}
+                  className={`theme-icon ${theme === "green-soft" ? "selected" : ""}`}
+                  onClick={() => setTheme("green-soft")}
+                />
+                <Moon
+                  size={28}
+                  className={`theme-icon ${theme === "dark-blue" ? "selected" : ""}`}
+                  onClick={() => setTheme("dark-blue")}
+                />
+              </div>
             </div>
+
+            {/* Privacy & Security */}
+            <div className="settings-section">
+              <label>Privacy & Security</label>
+              <div className="privacy-security-options">
+                <div className="privacy-option" onClick={() => setPrivacyMode(!privacyMode)}>
+                  <Shield className="option-icon" />
+                  <span>Privacy Mode</span>
+                  <input
+                    type="checkbox"
+                    checked={privacyMode}
+                    readOnly
+                  />
+                </div>
+                <div className="privacy-option" onClick={() => setEnableEncryption(!enableEncryption)}>
+                  <Lock className="option-icon" />
+                  <span>Security and password</span>
+      
+                </div>
+              </div>
+            </div>
+
             <div className="modal-actions">
               <button onClick={() => setShowSettings(false)}>Close</button>
             </div>
