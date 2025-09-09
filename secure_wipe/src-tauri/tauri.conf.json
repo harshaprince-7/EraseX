@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "y",
+  "productName": "secure_wipe",
   "version": "0.1.0",
-  "identifier": "y",
+  "identifier": "secure_wipe",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "y",
+        "title": "secure_wipe",
         "width": 800,
         "height": 600
       }
