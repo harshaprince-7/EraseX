@@ -17,14 +17,11 @@ function App() {
   const [theme, setTheme] = useState("dark-blue");
   const [showProfile, setShowProfile] = useState(false);
 
-  // Profile info
   const [username, setUsername] = useState("John Doe");
   const [email, setEmail] = useState("john.doe@email.com");
 
-  // Track selected wipe mode
   const [selectedWipe, setSelectedWipe] = useState<string | null>(null);
 
-  // Privacy & Security settings
   const [privacyMode, setPrivacyMode] = useState(false);
   const [enableEncryption, setEnableEncryption] = useState(false);
 
@@ -64,10 +61,23 @@ function App() {
     setShowConfirm(true);
   };
 
-  const confirmDelete = () => {
+
+  const confirmDelete = async () => {
     if (pin === CORRECT_PIN) {
       const selected = drives.filter((d) => d.selected).map((d) => d.name);
-      alert(`✅ Wiping drives: ${selected.join(", ")} with ${selectedWipe} mode`);
+
+      try {
+        const filePath = await invoke<string>("generate_certificate", {
+          drive: selected.join(", "),
+          wipeMode: selectedWipe,
+          user: username,
+        });
+
+        alert(`✅ Wiping completed!\nCertificate saved at: ${filePath}`);
+      } catch (err) {
+        alert(`❌ Failed to generate certificate: ${err}`);
+      }
+
       setShowConfirm(false);
       setPin("");
       setError("");
@@ -100,7 +110,7 @@ function App() {
           {showProfile && (
             <div className="profile-dropdown">
               <img
-                src="https://via.placeholder.com/60"
+                src="https://api.dicebear.com/9.x/pixel-art/svg"
                 alt="Profile"
                 className="profile-avatar"
               />
@@ -172,7 +182,8 @@ function App() {
           <h3>Wipe Mode</h3>
           <div className="wipe-modes">
             <div
-              className={`wipe-option ${selectedWipe === "Clear" ? "selected" : ""}`}
+              className={`wipe-option ${selectedWipe === "Clear" ? "selected" : ""
+                }`}
               onClick={() => setSelectedWipe("Clear")}
             >
               <strong>Clear</strong>
@@ -180,7 +191,8 @@ function App() {
               <span>Quick removal (Recoverable)</span>
             </div>
             <div
-              className={`wipe-option ${selectedWipe === "Purge" ? "selected" : ""}`}
+              className={`wipe-option ${selectedWipe === "Purge" ? "selected" : ""
+                }`}
               onClick={() => setSelectedWipe("Purge")}
             >
               <strong>Purge</strong>
@@ -188,7 +200,8 @@ function App() {
               <span>Secure Wipe (harder to recover)</span>
             </div>
             <div
-              className={`wipe-option ${selectedWipe === "Destroy" ? "selected" : ""}`}
+              className={`wipe-option ${selectedWipe === "Destroy" ? "selected" : ""
+                }`}
               onClick={() => setSelectedWipe("Destroy")}
             >
               <strong>Destroy</strong>
@@ -210,7 +223,9 @@ function App() {
           <a href="#">Contact</a>
           <a href="#">Help</a>
         </nav>
-        <small>© {new Date().getFullYear()} Secure Wipe Utility. All rights reserved.</small>
+        <small>
+          © {new Date().getFullYear()} Secure Wipe Utility. All rights reserved.
+        </small>
       </footer>
 
       {/* PIN Modal */}
@@ -245,12 +260,14 @@ function App() {
               <div className="theme-toggle">
                 <Sun
                   size={28}
-                  className={`theme-icon ${theme === "green-soft" ? "selected" : ""}`}
+                  className={`theme-icon ${theme === "green-soft" ? "selected" : ""
+                    }`}
                   onClick={() => setTheme("green-soft")}
                 />
                 <Moon
                   size={28}
-                  className={`theme-icon ${theme === "dark-blue" ? "selected" : ""}`}
+                  className={`theme-icon ${theme === "dark-blue" ? "selected" : ""
+                    }`}
                   onClick={() => setTheme("dark-blue")}
                 />
               </div>
@@ -260,19 +277,22 @@ function App() {
             <div className="settings-section">
               <label>Privacy & Security</label>
               <div className="privacy-security-options">
-                <div className="privacy-option" onClick={() => setPrivacyMode(!privacyMode)}>
+                <div
+                  className="privacy-option"
+                  onClick={() => setPrivacyMode(!privacyMode)}
+                >
                   <Shield className="option-icon" />
                   <span>Privacy Mode</span>
-                  <input
-                    type="checkbox"
-                    checked={privacyMode}
-                    readOnly
-                  />
+                  <input type="checkbox" checked={privacyMode} readOnly />
                 </div>
-                <div className="privacy-option" onClick={() => setEnableEncryption(!enableEncryption)}>
+                <div
+                  className="privacy-option"
+                  onClick={() =>
+                    setEnableEncryption(!enableEncryption)
+                  }
+                >
                   <Lock className="option-icon" />
                   <span>Security and password</span>
-      
                 </div>
               </div>
             </div>
