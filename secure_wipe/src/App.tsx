@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { User, MoreVertical } from "lucide-react";
 import "./App.css";
+import Register from "./Register";
+import Login from "./Login";
 
 
 interface Drive {
@@ -10,6 +12,7 @@ interface Drive {
 }
 
 function App() {
+  const [authState, setAuthState] = useState<'register' | 'login' | 'authenticated'>('register');
   const [drives, setDrives] = useState<Drive[]>([]);
   const [showConfirm, setShowConfirm] = useState(false);
   const [pin, setPin] = useState("");
@@ -17,10 +20,11 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [theme, setTheme] = useState("dark-blue");
   const [showProfile, setShowProfile] = useState(false);
-
-  // Profile info
-  const [username, setUsername] = useState("John Doe");
-  const [email, setEmail] = useState("john.doe@email.com");
+  const [userData, setUserData] = useState({
+    id: 0,
+    username: "",
+    email: ""
+  });
 
   // NEW: Track selected wipe mode
   const [selectedWipe, setSelectedWipe] = useState<string | null>(null);
@@ -31,16 +35,38 @@ function App() {
   const closeProfile = () => setShowProfile(false);
 
   useEffect(() => {
-    const fetchDrives = async () => {
-      try {
-        const driveList = await invoke<string[]>("list_drives");
-        setDrives(driveList.map((d: string) => ({ name: d, selected: false })));
-      } catch (err) {
-        console.error("Error fetching drives:", err);
-      }
-    };
-    fetchDrives();
-  }, []);
+    if (authState === 'authenticated') {
+      const fetchDrives = async () => {
+        try {
+          const driveList = await invoke<string[]>("list_drives");
+          setDrives(driveList.map((d: string) => ({ name: d, selected: false })));
+        } catch (err) {
+          console.error("Error fetching drives:", err);
+        }
+      };
+      fetchDrives();
+    }
+  }, [authState]);
+
+   const handleRegisterSuccess = async (token: string, user: any) => {
+    // Store token and switch to login
+    localStorage.setItem('authToken', token);
+    setUserData(user);
+    setAuthState('login');
+  };
+
+  const handleLoginSuccess = async (token: string, user: any) => {
+    // Store token and set authenticated
+    localStorage.setItem('authToken', token);
+    setUserData(user);
+    setAuthState('authenticated');
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('authToken');
+    setAuthState('login');
+    setShowProfile(false);
+  };
 
   const toggleDrive = (index: number) => {
     const newDrives = [...drives];
@@ -73,11 +99,15 @@ function App() {
     }
   };
 
-  const handleLogout = () => {
-    alert("You have been logged out!");
-    setShowProfile(false);
-  };
+   // Show authentication pages if not authenticated
+  if (authState === 'register') {
+    return <Register onSuccess={handleRegisterSuccess} onSwitch={() => setAuthState('login')} />;
+  }
 
+  if (authState === 'login') {
+    return <Login onSuccess={handleLoginSuccess} onSwitch={() => setAuthState('register')} />;
+  }
+  
   return (
     <main className={`container theme-${theme}`}>
       {/* Header */}
@@ -98,14 +128,14 @@ function App() {
                   <label>Username</label>
                   <input
                     type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
+                    value={userData.username}
+                    onChange={(e) => setUserData({...userData, username: e.target.value})}
                   />
                   <label>Email</label>
                   <input
                     type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    value={userData.email}
+                    onChange={(e) => setUserData({...userData, email: e.target.value})}
                   />
 
                 </div>

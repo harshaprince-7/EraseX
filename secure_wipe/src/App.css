@@ -325,3 +325,214 @@ main.container {
   background: var(--drive-selected);
   border-color: var(--button-bg);
 }
+
+/* Add these styles to your existing App.css */
+.auth-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: #243254;
+  padding: 20px;
+}
+
+.auth-panel {
+  display: flex;
+  width: 850px;
+  height: 500px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  box-shadow: 0 15px 35px rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.auth-panel.reversed {
+  flex-direction: row-reverse;
+}
+
+.welcome-panel {
+  flex: 1;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 40px;
+  text-align: center;
+}
+
+.welcome-panel h1 {
+  font-size: 28px;
+  margin-bottom: 20px;
+  font-weight: 600;
+}
+
+.welcome-panel p {
+  margin-bottom: 30px;
+  line-height: 1.6;
+}
+
+.outline-btn {
+  background: transparent;
+  border: 2px solid white;
+  color: white;
+  padding: 12px 30px;
+  border-radius: 30px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.outline-btn:hover {
+  background: white;
+  color: #263053;
+}
+
+.form-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 40px;
+}
+
+.form-panel h2 {
+  color: #3b82f6;
+  margin-bottom: 25px;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.social-login {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.social-btn {
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  border: 1px solid #ddd;
+  background: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.social-btn:hover {
+  background: #f5f5f5;
+  transform: translateY(-2px);
+}
+
+.divider {
+  color: #777;
+  margin: 20px 0;
+  position: relative;
+  text-align: center;
+  width: 100%;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 40%;
+  height: 1px;
+  background: #ddd;
+}
+
+.divider::before {
+  left: 0;
+}
+
+.divider::after {
+  right: 0;
+}
+
+.input-group {
+  width: 100%;
+  margin-bottom: 20px;
+}
+
+.input-group input {
+  width: 100%;
+  padding: 15px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 16px;
+  transition: border-color 0.3s ease;
+}
+
+.input-group input:focus {
+  outline: none;
+  border-color: #4caf50;
+}
+
+.input-group input:disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.submit-btn {
+  width: 100%;
+  padding: 15px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.3s ease;
+  box-sizing: border-box;
+}
+
+.submit-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.submit-btn:disabled {
+  background: #ffffff;
+  color: black;
+  cursor: not-allowed;
+}
+
+.error-message {
+  color: #f44336;
+  margin-bottom: 15px;
+  text-align: center;
+  font-size: 14px;
+}
+
+/* Responsive design */
+@media (max-width: 900px) {
+  .auth-panel {
+    flex-direction: column;
+    height: auto;
+    width: 100%;
+    max-width: 450px;
+  }
+  
+  .welcome-panel, .form-panel {
+    padding: 30px;
+  }
+  
+  .welcome-panel {
+    order: 2;
+  }
+  
+  .auth-panel.reversed .welcome-panel {
+    order: 2;
+  }
+  
+  .auth-panel.reversed .form-panel {
+    order: 1;
+  }
+}
