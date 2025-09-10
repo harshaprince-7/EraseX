@@ -1,168 +1,105 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
+
 html, body, #root {
   height: 100%;
   margin: 0;
-  font-family: 'Segoe UI', sans-serif;
+  font-family: 'Poppins', sans-serif;
 }
 
-/* Main layout */
-main.container {
+/* Layout */
+.app-layout {
   display: flex;
-  flex-direction: column;
   min-height: 100vh;
   background: var(--bg-color);
   color: var(--text-color);
-  transition: background 0.4s ease, color 0.4s ease;
+  flex-direction: row;
 }
 
-/* =========================
-   THEME VARIABLES
-========================= */
-
-/* Dark Blue Theme */
-.theme-dark-blue {
-  --bg-color: #0f172a;
-  --text-color: #e2e8f0;
-  --card-bg: #1e293b;
-  --border-color: #334155;
-  --button-bg: #3b82f6;
-  --button-bg-hover: #2563eb;
-  --drive-bg: #0f172a;
-  --drive-selected: #1e293b;
-  --modal-bg: #1e293b;
-}
-
-/* Green Soft Theme */
-.theme-green-soft {
-  --bg-color: #f0fdf4;
-  --text-color: #1a1a1a;
-  --card-bg: #ffffff;
-  --border-color: #d1d5db;
-  --button-bg: #10b981;
-  --button-bg-hover: #059669;
-  --drive-bg: #ffffff;
-  --drive-selected: #d1fae5;
-  --modal-bg: #ffffff;
-}
-
-/* =========================
-   HEADER
-========================= */
-.header {
-  position: relative;
-  text-align: center;
-  padding: 1rem;
-  font-size: 1.6rem;
-  font-weight: bold;
-  border-bottom: 1px solid var(--border-color);
-  transition: background 0.4s ease;
-}
-
-/* Header icons stacked vertically */
-.header-actions {
-  position: absolute;
-  right: 1rem;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-}
-
-/* Icons styling */
-.header-actions .icon {
-  width: 28px;
-  height: 28px;
-  color: var(--button-bg);
-  cursor: pointer;
-  transition: color 0.3s ease, transform 0.2s ease;
-}
-
-.header-actions .icon:hover {
-  color: var(--button-bg-hover);
-  transform: scale(1.1);
-}
-
-/* Profile wrapper */
-.profile-wrapper {
-  position: relative;
-}
-
-/* Profile dropdown */
-/* Make dropdown overlay on top of everything */
-.profile-dropdown {
-  position: fixed;          /* fixed positions it relative to viewport */
-  top: 60px;                /* adjust according to header height */
-  right: 1rem;              /* align to right edge like the icon */
-  width: 220px;
-  max-width: 90vw;          /* prevent overflow on small screens */
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  box-shadow: 0px 6px 20px rgba(0, 0, 0, 0.2);
-  z-index: 1000;            /* on top of header and content */
-  transition: opacity 0.3s ease, transform 0.3s ease;
-  padding: 40px;
-}
-/* Optional: make sure it doesn't go offscreen on very small windows */
-
-.profile-avatar {
-  width: 60px;
+/* Topbar */
+.topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
   height: 60px;
-  border-radius: 50%;
-  margin-bottom: 0.5rem;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
 }
 
-.profile-info {
+.topbar h1 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--button-bg);
+  margin: 0;
+  text-transform: uppercase;
+}
+
+/* Sidebar */
+.sidebar {
+  margin-top: 60px; /* below topbar */
+  width: 240px;
+  background: var(--card-bg);
+  border-right: 1px solid var(--border-color);
+  padding: 1.5rem 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  width: 100%;
-  margin-bottom: 0.5rem;
+  gap: 1rem;
+  box-shadow: 2px 0 6px rgba(0,0,0,0.1);
 }
 
-.profile-info label {
-  font-size: 0.75rem;
-  color: var(--text-color);
-  margin-bottom: 0.2rem;
+.sidebar-divider {
+  border-bottom: 1px solid var(--border-color);
+  margin: 1rem 0;
 }
 
-.profile-info input {
-  width: 100%;
-  padding: 0.4rem 0.5rem;
-  border-radius: 6px;
-  border: 1px solid var(--border-color);
-  background: var(--drive-bg);
-  color: var(--text-color);
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  padding: 0.6rem;
+  border-radius: 8px;
 }
 
-.logout-btn {
-  background: var(--button-bg);
-  color: white;
-  border: none;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
+.profile-header:hover {
+  background: var(--drive-selected);
+}
+
+.sidebar-icon {
+  color: var(--button-bg);
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem;
+  border-radius: 8px;
   cursor: pointer;
   transition: background 0.3s ease;
 }
 
-.logout-btn:hover {
-  background: var(--button-bg-hover);
+.sidebar-item:hover {
+  background: var(--drive-selected);
 }
 
-/* =========================
-   CONTENT
-========================= */
+.sidebar-important {
+  font-weight: 700;
+  color: var(--button-bg-hover);
+}
+
+/* Content */
 .content {
   flex: 1;
+  margin-top: 60px;
+  padding: 2rem;
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 2rem;
 }
 
 .card {
@@ -170,13 +107,12 @@ main.container {
   border: 1px solid var(--border-color);
   border-radius: 1rem;
   padding: 2rem;
-  max-width: 550px;
   width: 100%;
+  max-width: 600px;
   text-align: center;
-  box-shadow: 0px 6px 20px rgba(0, 0, 0, 0.15);
-  transition: background 0.4s ease, border 0.4s ease;
 }
 
+/* Drive list */
 .drive-list {
   display: flex;
   gap: 1rem;
@@ -190,13 +126,20 @@ main.container {
   border-radius: 8px;
   cursor: pointer;
   border: 1px solid var(--border-color);
-  transition: 0.3s ease;
 }
 
 .drive-option.selected {
-  background: var(--drive-selected);
+  background: var(--button-bg);        /* highlight with brand color */
+  color: #fff;                         /* white text for contrast */
+  border-color: var(--button-bg-hover);
+  font-weight: 600;
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.4); /* subtle glow effect */
+  transform: scale(1.05);              /* slight zoom effect */
+  transition: all 0.2s ease;
 }
 
+
+/* Wipe Modes */
 .wipe-modes {
   display: flex;
   gap: 1rem;
@@ -212,7 +155,13 @@ main.container {
   border: 2px solid var(--border-color);
   border-radius: 12px;
   cursor: pointer;
-  transition: background 0.3s ease, border 0.3s ease;
+}
+
+.wipe-option.selected {
+  background: var(--button-bg);
+  border-color: var(--button-bg-hover);
+  color: #fff;
+  font-weight: 600;
 }
 
 .proceed-btn {
@@ -224,20 +173,23 @@ main.container {
   font-size: 1rem;
   font-weight: bold;
   cursor: pointer;
-  transition: background 0.3s ease;
 }
 
 .proceed-btn:hover {
   background: var(--button-bg-hover);
 }
 
-/* =========================
-   FOOTER
-========================= */
+/* Footer */
 .footer {
-  padding: 0.8rem;
-  text-align: center;
+  position: fixed;
+  bottom: 0;
+  left: 240px; /* account for sidebar */
+  right: 0;
+  height: 50px;
+  background: var(--card-bg);
   border-top: 1px solid var(--border-color);
+  text-align: center;
+  padding: 0.6rem;
   font-size: 0.85rem;
 }
 
@@ -252,43 +204,70 @@ main.container {
   color: var(--button-bg-hover);
 }
 
-/* =========================
-   MODALS
-========================= */
+/* Modal */
 .modal {
   position: fixed;
   top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.6);
+  left: 240px; /* account for sidebar */
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.6);
   display: flex;
   justify-content: center;
   align-items: center;
 }
 
+/* Modal Content Styling */
 .modal-content {
   background: var(--modal-bg);
   border: 1px solid var(--border-color);
   padding: 2rem;
   border-radius: 12px;
-  text-align: center;
-  max-width: 350px;
-  width: 100%;
-  transition: background 0.4s ease, border 0.4s ease;
+  max-width: 400px;
+  width: 90%;
+  text-align: left;  /* better readability */
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
 }
 
-.modal-content input,
+.modal-content h2 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  text-align: center; /* keep title centered */
+  margin: 0;
+  color: var(--button-bg);
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.settings-section label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
 .settings-section select {
-  width: 80%;
-  padding: 0.5rem;
-  margin-top: 0.5rem;
+  padding: 0.6rem;
   border-radius: 6px;
   border: 1px solid var(--border-color);
   background: var(--drive-bg);
   color: var(--text-color);
+  font-size: 0.95rem;
+  outline: none;
+  transition: border 0.2s ease;
 }
 
+.settings-section select:focus {
+  border-color: var(--button-bg);
+}
+
+/* Modal buttons aligned center */
 .modal-actions {
   display: flex;
   justify-content: center;
@@ -300,28 +279,110 @@ main.container {
   background: var(--button-bg);
   color: white;
   border: none;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.3s ease;
+  transition: background 0.2s ease;
 }
 
 .modal-actions button:hover {
   background: var(--button-bg-hover);
 }
 
-.error {
-  color: #f87171;
-  font-size: 0.85rem;
+
+/* Themes */
+.theme-dark-professional {
+  --bg-color: #121212;          /* deep neutral background */
+  --text-color: #e5e5e5;        /* soft white text */
+  --card-bg: #1e1e1e;           /* slightly lighter panels */
+  --border-color: #2e2e2e;      /* subtle borders */
+  --button-bg: #2563eb;         /* professional blue accent */
+  --button-bg-hover: #1d4ed8;   /* darker blue on hover */
+  --drive-bg: #121212;
+  --drive-selected: #1e1e1e;
+  --modal-bg: #1e1e1e;
 }
-.wipe-option.selected {
-  background: var(--button-bg);         /* highlight with theme color */
-  border-color: var(--button-bg-hover); /* stronger border */
-  color: #ffffff;                       /* white text for contrast */
-  font-weight: 600;                     /* make text bolder */
-  transform: scale(1.05);               /* subtle "pop" */
+
+.theme-green-soft {
+  --bg-color: #f0fdf4;
+  --text-color: #1a1a1a;
+  --card-bg: #ffffff;
+  --border-color: #d1d5db;
+  --button-bg: #10b981;
+  --button-bg-hover: #059669;
+  --drive-bg: #ffffff;
+  --drive-selected: #d1fae5;
+  --modal-bg: #ffffff;
 }
-.wipe-option:hover {
+
+.theme-icon {
+  stroke: var(--button-bg);
+  transition: transform 0.2s ease, stroke 0.2s ease;
+}
+
+.theme-icon:hover {
+  transform: scale(1.2);
+}
+
+.theme-icon.selected {
+  stroke: var(--button-bg-hover);
+}
+/* Theme Toggle */
+.theme-toggle {
+  display: flex;
+  gap: 1rem;
+  background: var(--drive-bg);
+  padding: 0.5rem 1rem;
+  border-radius: 12px;
+  justify-content: center;
+  align-items: center;
+  width: max-content;
+  margin-top: 0.5rem;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+.theme-icon {
+  stroke-width: 2.5;
+  padding: 6px;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  stroke: var(--button-bg);
+}
+
+.theme-icon:hover {
+  transform: scale(1.2);
+  background: rgba(0,0,0,0.1);
+}
+
+.theme-icon.selected {
+  background: var(--button-bg);
+  stroke: #fff;
+}
+
+/* Privacy & Security */
+.privacy-security-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  margin-top: 0.5rem;
+}
+
+.privacy-option {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  background: var(--drive-bg);
+  border: 1px solid var(--border-color);
+  transition: background 0.2s ease;
+}
+
+.privacy-option:hover {
   background: var(--drive-selected);
   border-color: var(--button-bg);
 }

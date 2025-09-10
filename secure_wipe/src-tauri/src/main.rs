@@ -236,6 +236,9 @@ async fn update_profile(
         email: result.email,
     })
 }
+use sha2::{Sha256, Digest};
+use std::fs::File;
+use std::io::Write;
 
 #[command]
 fn list_drives(pretty: Option<bool>) -> Result<Vec<String>, String> {
@@ -273,17 +276,16 @@ fn list_drives(pretty: Option<bool>) -> Result<Vec<String>, String> {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() == 2 {
                 if pretty {
-                    drives.push(format!("{} ({})", parts[1], parts[0])); // user-friendly
+                    drives.push(format!("{} ({})", parts[1], parts[0]));
                 } else {
-                    drives.push(format!("/dev/{}", parts[0])); // raw device path
+                    drives.push(format!("/dev/{}", parts[0]));
                 }
             }
         }
 
         Ok(drives)
     } else if OS == "android" {
-        // Android (mounted storage)
-        // Note: No `lsblk` on Android, so list `/storage/*` instead.
+        // Android
         let storage_paths = std::fs::read_dir("/storage")
             .map_err(|e| format!("Failed to read /storage: {}", e))?;
 
@@ -303,6 +305,41 @@ fn list_drives(pretty: Option<bool>) -> Result<Vec<String>, String> {
     } else {
         Err(format!("Unsupported OS: {}", OS))
     }
+}
+#[command]
+fn generate_certificate(drive: String, wipe_mode: String, user: String) -> Result<String, String> {
+    let timestamp = Utc::now().to_rfc3339();
+    let certificate_content = format!(
+        "Secure Wipe Certificate\n\
+        ======================\n\
+        Drive: {}\n\
+        Wipe Mode: {}\n\
+        User: {}\n\
+        Timestamp: {}\n",
+        drive, wipe_mode, user, timestamp
+    );
+    let mut hasher = Sha256::new();
+    hasher.update(&certificate_content);
+    let result = hasher.finalize();
+    let hash_hex = format!("{:x}", result);
+    let full_content = format!(
+        "{}\nVerification Hash: {}\n",
+        certificate_content, hash_hex
+    );
+    let sanitized_drive = drive
+        .replace("/", "_")
+        .replace("\\", "_")
+        .replace(":", "_")
+        .replace(" ", "_");
+    let mut path: std::path::PathBuf = dirs::document_dir().ok_or("Could not find Documents directory")?;
+    path.push("WipeCertificates");
+    std::fs::create_dir_all(&path).map_err(|e| format!("Failed to create directory: {}", e))?;
+    path.push(format!("certificate_{}.txt", sanitized_drive));
+    let mut file = File::create(&path)
+        .map_err(|e| format!("Failed to create certificate: {}", e))?;
+    file.write_all(full_content.as_bytes())
+        .map_err(|e| format!("Failed to write certificate: {}", e))?;
+    Ok(path.display().to_string())
 }
 
 #[tokio::main]
@@ -326,7 +363,8 @@ async fn main() {
             login_user,
             verify_token,
             update_profile,
-            list_drives
+            list_drives,
+            generate_certificate
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
