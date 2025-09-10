@@ -129,8 +129,15 @@ html, body, #root {
 }
 
 .drive-option.selected {
-  background: var(--drive-selected);
+  background: var(--button-bg);        /* highlight with brand color */
+  color: #fff;                         /* white text for contrast */
+  border-color: var(--button-bg-hover);
+  font-weight: 600;
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.4); /* subtle glow effect */
+  transform: scale(1.05);              /* slight zoom effect */
+  transition: all 0.2s ease;
 }
+
 
 /* Wipe Modes */
 .wipe-modes {
@@ -286,16 +293,16 @@ html, body, #root {
 
 
 /* Themes */
-.theme-dark-blue {
-  --bg-color: #0f172a;
-  --text-color: #e2e8f0;
-  --card-bg: #1e293b;
-  --border-color: #334155;
-  --button-bg: #3b82f6;
-  --button-bg-hover: #2563eb;
-  --drive-bg: #0f172a;
-  --drive-selected: #1e293b;
-  --modal-bg: #1e293b;
+.theme-dark-professional {
+  --bg-color: #121212;          /* deep neutral background */
+  --text-color: #e5e5e5;        /* soft white text */
+  --card-bg: #1e1e1e;           /* slightly lighter panels */
+  --border-color: #2e2e2e;      /* subtle borders */
+  --button-bg: #2563eb;         /* professional blue accent */
+  --button-bg-hover: #1d4ed8;   /* darker blue on hover */
+  --drive-bg: #121212;
+  --drive-selected: #1e1e1e;
+  --modal-bg: #1e1e1e;
 }
 
 .theme-green-soft {

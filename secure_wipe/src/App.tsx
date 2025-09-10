@@ -14,7 +14,7 @@ function App() {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [showSettings, setShowSettings] = useState(false);
-  const [theme, setTheme] = useState("dark-blue");
+const [theme, setTheme] = useState("dark-professional");
   const [showProfile, setShowProfile] = useState(false);
 
   // Profile info
@@ -99,26 +99,26 @@ function App() {
 
           {showProfile && (
             <div className="profile-dropdown">
-              <img
+              {/* <img
                 src="https://via.placeholder.com/60"
                 alt="Profile"
                 className="profile-avatar"
-              />
+              /> */}
               <div className="profile-info">
                 <label>Username</label>
                 <input
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                />
-                <label>Email</label>
+                /><br/>
+                <label>Email</label><br/>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
-              <button className="logout-btn">Change email</button>
+              <button className="logout-btn">Change email</button><br/><br/>
               <button
                 className="logout-btn"
                 onClick={() => {
@@ -250,9 +250,9 @@ function App() {
                 />
                 <Moon
                   size={28}
-                  className={`theme-icon ${theme === "dark-blue" ? "selected" : ""}`}
-                  onClick={() => setTheme("dark-blue")}
-                />
+                  className={`theme-icon ${theme === "dark-professional" ? "selected" : ""}`}
+                  onClick={() => setTheme("dark-professional")}
+                  />
               </div>
             </div>
 
