@@ -2,18 +2,16 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { User, MoreVertical, Sun, Moon, Shield, Lock } from "lucide-react";
 import "./App.css";
+import Register from "./Register";
+import Login from "./Login";
 
 interface Drive {
   name: string;
   selected: boolean;
 }
 
-interface File {
-  name: string;
-  size: number;
-}
-
 function App() {
+  const [authState, setAuthState] = useState<'register' | 'login' | 'authenticated'>('register');
   const [drives, setDrives] = useState<Drive[]>([]);
   const [showConfirm, setShowConfirm] = useState(false);
   const [pin, setPin] = useState("");
@@ -23,6 +21,7 @@ function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [username, setUsername] = useState("John Doe");
   const [email, setEmail] = useState("john.doe@email.com");
+
   const [selectedWipe, setSelectedWipe] = useState<string | null>(null);
   const [privacyMode, setPrivacyMode] = useState(false);
   const [enableEncryption, setEnableEncryption] = useState(false);
@@ -38,16 +37,36 @@ function App() {
   const closeProfile = () => setShowProfile(false);
 
   useEffect(() => {
-    const fetchDrives = async () => {
-      try {
-        const driveList = await invoke<string[]>("list_drives");
-        setDrives(driveList.map((d: string) => ({ name: d, selected: false })));
-      } catch (err) {
-        console.error("Error fetching drives:", err);
-      }
-    };
-    fetchDrives();
-  }, []);
+    if (authState === 'authenticated') {
+      const fetchDrives = async () => {
+        try {
+          const driveList = await invoke<string[]>("list_drives");
+          setDrives(driveList.map((d: string) => ({ name: d, selected: false })));
+        } catch (err) {
+          console.error("Error fetching drives:", err);
+        }
+      };
+      fetchDrives();
+    }
+  }, [authState]);
+
+  const handleRegisterSuccess = async (token: string, user: any) => {
+    // Store token and switch to login
+    localStorage.setItem('authToken', token);
+    setAuthState('login');
+  };
+
+  const handleLoginSuccess = async (token: string, user: any) => {
+    // Store token and set authenticated
+    localStorage.setItem('authToken', token);
+    setAuthState('authenticated');
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('authToken');
+    setAuthState('login');
+    setShowProfile(false);
+  };
 
   const toggleDrive = (index: number) => {
     const newDrives = [...drives];
@@ -92,15 +111,18 @@ function App() {
     }
   };
 
-  const handleLogout = () => {
-    alert("You have been logged out!");
-    setShowProfile(false);
-  };
+  // Show authentication pages if not authenticated
+  if (authState === 'register') {
+    return <Register onSuccess={handleRegisterSuccess} onSwitch={() => setAuthState('login')} />;
+  }
+
+  if (authState === 'login') {
+    return <Login onSuccess={handleLoginSuccess} onSwitch={() => setAuthState('register')} />;
+  }
 
   const handleVerifyCertificate = () => {
     setShowUploadModal(true);
   };
-
   return (
     <main className={`app-layout theme-${theme}`}>
       {/* Top Bar */}
@@ -164,7 +186,7 @@ function App() {
             <span>Wipe Methods</span>
           </div>
 
-          
+
           <div
             className={`sidebar-item ${currentPage === "dashboard" ? "active" : ""}`}
             onClick={() => setCurrentPage("dashboard")}
@@ -186,7 +208,7 @@ function App() {
             <span>Settings</span>
           </div>
 
-          
+
         </div>
       </aside>
 
@@ -221,7 +243,7 @@ function App() {
                 className={`wipe-option ${selectedWipe === "Purge" ? "selected" : ""}`}
                 onClick={() => setSelectedWipe("Purge")}
               >
-                <strong>Random Byte</strong> 
+                <strong>Random Byte</strong>
                 <br />
                 <span>Secure Wipe (hard to recover)</span>
               </div>
@@ -343,7 +365,23 @@ function App() {
                     return;
                   }
                   try {
-                    const content = await selectedFile.text();
+                    const readFileAsText = (file: File): Promise<string> => {
+                      return new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+
+                        reader.onload = () => {
+                          resolve(reader.result as string);
+                        };
+
+                        reader.onerror = () => {
+                          reject(reader.error);
+                        };
+
+                        reader.readAsText(file);
+                      });
+                    };
+
+                    const content = await readFileAsText(selectedFile);
                     const isValid = await invoke<boolean>("verify_certificate", {
                       content,
                     });
@@ -420,66 +458,66 @@ function Dashboard({
   const totalFilteredSize = filteredFiles.reduce((acc, f) => acc + f.size, 0);
 
   return (
-  <div className={`dashboard-full theme-${theme}`}>
-    <div className="dashboard-scrollable">
-      {selectedDrive ? (
-        <>
-          <h2>Files in {selectedDrive}</h2>
-          <input
-            type="text"
-            placeholder="🔍 Search files..."
-            className="search-bar"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <div className="file-grid-container">
-            <ul className="file-grid">
-              {filteredFiles.map((f) => (
-                <li key={f.name} className="file-card">
-                  <div className="file-info">
-                    <span className="file-name">{f.name}</span>
-                    <span className="file-size">{formatSize(f.size)}</span>
+    <div className={`dashboard-full theme-${theme}`}>
+      <div className="dashboard-scrollable">
+        {selectedDrive ? (
+          <>
+            <h2>Files in {selectedDrive}</h2>
+            <input
+              type="text"
+              placeholder="🔍 Search files..."
+              className="search-bar"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <div className="file-grid-container">
+              <ul className="file-grid">
+                {filteredFiles.map((f) => (
+                  <li key={f.name} className="file-card">
+                    <div className="file-info">
+                      <span className="file-name">{f.name}</span>
+                      <span className="file-size">{formatSize(f.size)}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <p className="file-summary">
+              Showing {filteredFiles.length} files — Total size: {formatSize(totalFilteredSize)}
+            </p>
+            <button onClick={() => setSelectedDrive(null)} className="back-btn">
+              ⬅ Back to Drive Dashboard
+            </button>
+          </>
+        ) : (
+          <>
+            <h2>Drive Dashboard</h2>
+            <div className="drive-dashboard">
+              {driveInfo.map((d) => {
+                const used = d.total - d.free;
+                const percent = d.total ? Math.round((used / d.total) * 100) : 0;
+                return (
+                  <div
+                    key={d.name}
+                    className="drive-dashboard-item"
+                    onClick={() => handleDriveClick(d.name)}
+                  >
+                    <h3>{d.name}</h3>
+                    <div className="storage-bar">
+                      <div className="storage-used" style={{ width: `${percent}%` }}></div>
+                    </div>
+                    <small>
+                      {Math.round(used / 1e9)} GB used / {Math.round(d.total / 1e9)} GB total
+                    </small>
                   </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <p className="file-summary">
-            Showing {filteredFiles.length} files — Total size: {formatSize(totalFilteredSize)}
-          </p>
-          <button onClick={() => setSelectedDrive(null)} className="back-btn">
-            ⬅ Back to Drive Dashboard
-          </button>
-        </>
-      ) : (
-        <>
-          <h2>Drive Dashboard</h2>
-          <div className="drive-dashboard">
-            {driveInfo.map((d) => {
-              const used = d.total - d.free;
-              const percent = d.total ? Math.round((used / d.total) * 100) : 0;
-              return (
-                <div
-                  key={d.name}
-                  className="drive-dashboard-item"
-                  onClick={() => handleDriveClick(d.name)}
-                >
-                  <h3>{d.name}</h3>
-                  <div className="storage-bar">
-                    <div className="storage-used" style={{ width: `${percent}%` }}></div>
-                  </div>
-                  <small>
-                    {Math.round(used / 1e9)} GB used / {Math.round(d.total / 1e9)} GB total
-                  </small>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
 
 }
 
