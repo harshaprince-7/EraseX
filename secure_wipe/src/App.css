@@ -55,6 +55,76 @@ html, body, #root {
   border-bottom: 1px solid var(--border-color);
   margin: 1rem 0;
 }
+/* Profile Dropdown collapsed by default */
+.profile-dropdown {
+  overflow: hidden;
+  max-height: 0;              /* hidden */
+  transition: max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
+  opacity: 0;
+  padding: 0 1rem;            /* horizontal padding only when collapsed */
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+/* When showProfile is true, expand dropdown */
+.profile-header + .profile-dropdown {
+  max-height: 500px;          /* enough to fit content */
+  opacity: 1;
+  padding: 1rem;              /* restore full padding */
+}
+
+/* Profile inputs */
+.profile-dropdown input {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--drive-bg);
+  color: var(--text-color);
+  font-size: 0.9rem;
+  outline: none;
+  transition: border 0.2s ease, box-shadow 0.2s ease;
+}
+
+.profile-dropdown input:focus {
+  border-color: var(--button-bg);
+  box-shadow: 0 0 5px rgba(37, 99, 235, 0.4);
+}
+
+/* Labels */
+.profile-dropdown label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+/* Buttons inside dropdown */
+.profile-dropdown .logout-btn {
+  background: var(--button-bg);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 0.8rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.profile-dropdown .logout-btn:hover {
+  background: var(--button-bg-hover);
+}
+
+/* Separate Change Email button from Logout */
+.profile-dropdown .logout-btn:first-of-type {
+  margin-bottom: 0.5rem;
+  background: #10b981; /* green accent for change email */
+}
+
+.profile-dropdown .logout-btn:first-of-type:hover {
+  background: #059669;
+}
 
 .profile-header {
   display: flex;
@@ -596,4 +666,399 @@ html, body, #root {
   .auth-panel.reversed .form-panel {
     order: 1;
   }
+}
+/* Modal backdrop */
+.modal {
+  position: fixed;
+  inset: 0; /* shorthand for top/right/bottom/left:0 */
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+  animation: fadeIn 0.25s ease-in-out;
+}
+
+/* Modal box */
+.modal-content {
+  background: #ffffff;
+  padding: 2rem 2.5rem;
+  border-radius: 16px;
+  max-width: 420px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+  animation: scaleIn 0.25s ease-in-out;
+}
+
+/* Heading inside modal */
+.modal-content h2 {
+  margin-bottom: 1.5rem;
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: #222;
+}
+
+/* File input */
+.modal-content input[type="file"] {
+  margin: 1rem 0;
+  padding: 0.5rem;
+  color:black;
+  border: 2px dashed #ccc;
+  border-radius: 10px;
+  width: 100%;
+  cursor: pointer;
+  transition: border 0.2s ease;
+}
+
+.modal-content input[type="file"]:hover {
+  border-color: #0078ff;
+}
+
+/* Actions row */
+.modal-actions {
+  margin-top: 1.8rem;
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+}
+
+/* Buttons */
+.modal-actions button {
+  padding: 0.6rem 1.2rem;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.modal-actions button:first-child {
+  background: #0078ff;
+  color: #fff;
+}
+
+.modal-actions button:first-child:hover {
+  background: #005fcc;
+}
+
+.modal-actions button:last-child {
+  background: #e0e0e0;
+  color: #333;
+}
+
+.modal-actions button:last-child:hover {
+  background: #c7c7c7;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0.9); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+/* Full dashboard layout */
+.dashboard-full {
+  flex: 1;
+  padding: 2rem;
+  background: var(--bg-color); /* theme-aware background */
+  color: var(--text-color);    /* theme-aware text color */
+}
+
+.dashboard-full h2 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  color: #222;
+}
+
+
+/* Grid for drives */
+.drive-dashboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+ .dashboard-full h2 {
+  color: var(--heading-color);
+}
+ .dashboard-full small {
+  color: black;
+}
+
+/* Drive cards */
+.drive-dashboard-item {
+  background: #fff;
+  padding: 1.5rem;
+  border-radius: 14px;
+  border: 1px solid #ddd;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+  transition: transform 0.2s, box-shadow 0.2s;
+  cursor: pointer;
+}
+
+.drive-dashboard-item:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.1);
+}
+
+.drive-dashboard-item h3 {
+  margin: 0 0 0.8rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #0078ff;
+}
+
+.storage-bar {
+  background: #e5e5e5;
+  height: 14px;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 0.8rem;
+}
+
+.storage-used {
+  background: linear-gradient(90deg, #0078ff, #00c6ff);
+  height: 100%;
+  transition: width 0.8s ease-in-out;
+}
+
+/* File list view */
+.search-bar {
+  width: 100%;
+  padding: 0.7rem;
+  margin: 1rem 0;
+  border-radius: 10px;
+  border: 1px solid #bbb;
+  font-size: 1rem;
+}
+
+.file-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #eee;
+  border-radius: 8px;
+}
+
+.file-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 1rem;
+  color: #222;
+}
+
+.file-item:hover {
+  background: #f9f9f9;
+}
+
+.file-size {
+  font-weight: 500;
+  color: #444;
+}
+
+.file-summary {
+  margin-top: 1rem;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #0078ff;
+}
+
+.back-btn {
+  margin-top: 1.2rem;
+  padding: 0.6rem 1.2rem;
+  border: none;
+  border-radius: 8px;
+  background: #0078ff;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: background 0.2s;
+}
+
+.back-btn:hover {
+  background: #005fcc;
+}
+/* File Grid (Card Layout) */
+/* File Grid (Card Layout) */
+.file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+
+.file-card {
+  background: var(--card-bg);       /* theme-aware background */
+  border-radius: 12px;
+  padding: 1rem 1.2rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: transform 0.2s, box-shadow 0.2s, background 0.2s, color 0.2s;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
+}
+
+.file-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+  background: var(--drive-selected);      /* theme-aware hover background */
+  color: var(--button-bg);                /* theme-aware hover text color */
+}
+
+.file-info {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.file-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: inherit;   /* inherits from file-card, changes on hover */
+  word-break: break-word;
+}
+
+.file-size {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: inherit;   /* inherits from file-card, changes on hover */
+}
+
+/* File Summary */
+.file-summary {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--button-bg);
+  margin-top: 0.5rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .file-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+
+  .file-card {
+    padding: 0.8rem 1rem;
+  }
+
+  .file-name {
+    font-size: 0.9rem;
+  }
+
+  .file-size {
+    font-size: 0.85rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .file-grid {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+
+  .file-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+  }
+
+  .file-name,
+  .file-size {
+    width: 100%;
+    text-align: left;
+  }
+}
+/* Dashboard headings theme-aware */
+.dashboard-heading {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  color: var(--heading-color);
+}
+
+/* Scrollable file list container */
+.file-grid-container {
+  max-height: 60vh;
+  overflow-y: scroll;       /* force scroll but hide scrollbar */
+  padding-right: 8px;
+
+  /* hide scrollbar in all browsers */
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;     /* Firefox */
+}
+
+.file-grid-container::-webkit-scrollbar {
+  display: none;             /* Chrome, Safari */
+}
+
+
+/* File cards */
+.file-card {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
+  cursor: pointer;
+}
+
+.file-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+  background: var(--file-hover-bg);
+}
+
+.file-info {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.file-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-color);
+  word-break: break-all;
+}
+
+.file-size {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--button-bg);
+}
+
+/* Theme variables for dashboard */
+.theme-dark-professional {
+  --card-bg: #1e1e1e;
+  --text-color: #e5e5e5;
+  --button-bg: #2563eb;
+  --heading-color: #ffffff;
+  --file-hover-bg: #2a2a2a;
+}
+
+.theme-green-soft {
+  --card-bg: #ffffff;
+  --text-color: #1a1a1a;
+  --button-bg: #10b981;
+  --heading-color: #111;
+  --file-hover-bg: #d1fae5;
 }
