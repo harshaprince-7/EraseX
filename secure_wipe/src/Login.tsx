@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { invoke } from "@tauri-apps/api/core";
 
 interface LoginProps {
-  onSuccess: (token: string, user: any) => void;
+  onSuccess: (token: string, user: any, pin: string) => void; // updated to include PIN
   onSwitch: () => void;
 }
 
@@ -28,21 +28,28 @@ const Login = ({ onSuccess, onSwitch }: LoginProps) => {
     setIsLoading(true);
     
     try {
+      // Include confirmation_pin in the response type
       const response = await invoke<{ 
         token: string, 
         user_id: number, 
         username: string, 
-        email: string 
+        email: string,
+        confirmation_pin: string // ✅ new
       }>('login_user', {
         email: formData.email,
         password: formData.password
       });
       
-      onSuccess(response.token, {
-        id: response.user_id,
-        username: response.username,
-        email: response.email
-      });
+      // Pass PIN to onSuccess
+      onSuccess(
+        response.token,
+        {
+          id: response.user_id,
+          username: response.username,
+          email: response.email
+        },
+        response.confirmation_pin // ✅ pass PIN
+      );
     } catch (err) {
       setError(String(err));
     } finally {
@@ -90,12 +97,12 @@ const Login = ({ onSuccess, onSwitch }: LoginProps) => {
             {error && <div className="error-message">{error}</div>}
             <div className='input-group'>
                <button 
-              type="submit" 
-              className="submit-btn"
-              disabled={isLoading}
-            >
-              {isLoading ? 'Signing In...' : 'SIGN IN'}
-            </button>
+                type="submit" 
+                className="submit-btn"
+                disabled={isLoading}
+              >
+                {isLoading ? 'Signing In...' : 'SIGN IN'}
+              </button>
             </div>
           </form>
         </div>

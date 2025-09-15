@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { invoke } from "@tauri-apps/api/core";
 
 interface RegisterProps {
-  onSuccess: (token: string, user: any) => void;
+  onSuccess: (token: string, user: any, confirmationPin: string) => void;
   onSwitch: () => void;
 }
 
@@ -29,22 +29,24 @@ const Register = ({ onSuccess, onSwitch }: RegisterProps) => {
     setIsLoading(true);
     
     try {
-      const response = await invoke<{ 
-        token: string, 
-        user_id: number, 
-        username: string, 
-        email: string 
-      }>('register_user', {
-        email: formData.email,
-        password: formData.password,
-        username: formData.name
-      });
-      
-      onSuccess(response.token, {
-        id: response.user_id,
-        username: response.username,
-        email: response.email
-      });
+     const response = await invoke<{ 
+  token: string, 
+  user_id: number, 
+  username: string, 
+  email: string,
+  confirmation_pin: string // <- add this
+}>('register_user', {
+  email: formData.email,
+  password: formData.password,
+  username: formData.name
+});
+
+onSuccess(response.token, {
+  id: response.user_id,
+  username: response.username,
+  email: response.email
+}, response.confirmation_pin); // <- pass PIN
+
     } catch (err) {
       setError(String(err));
     } finally {

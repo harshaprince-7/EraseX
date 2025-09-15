@@ -4,14 +4,28 @@ import { User, MoreVertical, Sun, Moon, Shield, Lock } from "lucide-react";
 import "./App.css";
 import Register from "./Register";
 import Login from "./Login";
+import BootableModal from "./BootableModal";
 
 interface Drive {
   name: string;
   selected: boolean;
 }
 
+interface Certificate {
+  id: number;
+  user_id: number;
+  drive: string;
+  wipe_mode: string;
+  device_id: string;
+  timestamp: string;
+  content: string;
+  hash: string;
+}
+
 function App() {
-  const [authState, setAuthState] = useState<'register' | 'login' | 'authenticated'>('register');
+  const [authState, setAuthState] = useState<
+    "register" | "login" | "authenticated"
+  >("register");
   const [drives, setDrives] = useState<Drive[]>([]);
   const [showConfirm, setShowConfirm] = useState(false);
   const [pin, setPin] = useState("");
@@ -19,25 +33,86 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [theme, setTheme] = useState("dark-professional");
   const [showProfile, setShowProfile] = useState(false);
-  const [username, setUsername] = useState("John Doe");
-  const [email, setEmail] = useState("john.doe@email.com");
-
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [generatedCertificate, setGeneratedCertificate] = useState<string | null>(null);
   const [selectedWipe, setSelectedWipe] = useState<string | null>(null);
+  const [selectedRandomMethod, setSelectedRandomMethod] = useState<
+    string | null
+  >(null);
   const [privacyMode, setPrivacyMode] = useState(false);
   const [enableEncryption, setEnableEncryption] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-
+  const [showRandomWipeModal, setShowRandomWipeModal] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [showPin, setShowPin] = useState(false);
+  const [showPinPasswordModal, setShowPinPasswordModal] = useState(false);
+  const [showPinDisplayModal, setShowPinDisplayModal] = useState(false);
+  const [pinPassword, setPinPassword] = useState(""); // stores entered password
+  const [pinPasswordError, setPinPasswordError] = useState("");
+  const [showSecurityOptionsModal, setShowSecurityOptionsModal] = useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [showChangePinModal, setShowChangePinModal] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [sensitiveFiles, setSensitiveFiles] = useState<string[]>([]);
+  const [showSensitiveFilesModal, setShowSensitiveFilesModal] = useState(false);
+  const [pinAttempts, setPinAttempts] = useState(0);
+  const [filesLocked, setFilesLocked] = useState(false); 
   // page navigation
-  const [currentPage, setCurrentPage] = useState<"home" | "dashboard">("home");
-
-  const CORRECT_PIN = "1234";
+  const [currentPage, setCurrentPage] = useState<
+    "home" | "dashboard" | "certificates" | "sensitive-files" | "bootable"
+  >("home");
+  const [userPin, setUserPin] = useState<string | null>(null);
+  const [showBootableModal, setShowBootableModal] = useState(false);
+  const [usbDrives, setUsbDrives] = useState<string[]>([]);
+  const [selectedUsb, setSelectedUsb] = useState<string>("");
+  const [showHelpModal, setShowHelpModal] = useState(false);
 
   const toggleProfile = () => setShowProfile(!showProfile);
   const closeProfile = () => setShowProfile(false);
 
   useEffect(() => {
-    if (authState === 'authenticated') {
+    const validateToken = async () => {
+      const token = sessionStorage.getItem("authToken");
+      if (token) {
+        try {
+          const user = await invoke<any>("verify_token", { token });
+          setUsername(user.username);
+          setEmail(user.email);
+          setCurrentUserId(user.id);
+          setAuthState("authenticated");
+        } catch (err) {
+          sessionStorage.removeItem("authToken");
+          setAuthState("login");
+        }
+      }
+    };
+    validateToken();
+  }, []);
+
+  useEffect(() => {
+    if (authState === "authenticated") {
+      const refreshInterval = setInterval(async () => {
+        const token = sessionStorage.getItem("authToken");
+        if (token) {
+          try {
+            const newToken = await invoke<string>("refresh_token", { token });
+            sessionStorage.setItem("authToken", newToken);
+          } catch (err) {
+            handleLogout();
+          }
+        }
+      }, 23 * 60 * 60 * 1000);
+
+      return () => clearInterval(refreshInterval);
+    }
+  }, [authState]);
+
+  useEffect(() => {
+    if (authState === "authenticated") {
       const fetchDrives = async () => {
         try {
           const driveList = await invoke<string[]>("list_drives");
@@ -50,21 +125,30 @@ function App() {
     }
   }, [authState]);
 
-  const handleRegisterSuccess = async (token: string, user: any) => {
-    // Store token and switch to login
-    localStorage.setItem('authToken', token);
-    setAuthState('login');
+  // Registration
+  const handleRegisterSuccess = (token: string, user: any, pin: string) => {
+    sessionStorage.setItem("authToken", token);
+    setUsername(user.username);
+    setEmail(user.email);
+    setCurrentUserId(user.id);
+    setUserPin(pin);
+    alert(`🎉 Your PIN: ${pin}`);
+    setAuthState("authenticated");
   };
 
-  const handleLoginSuccess = async (token: string, user: any) => {
-    // Store token and set authenticated
-    localStorage.setItem('authToken', token);
-    setAuthState('authenticated');
+  // Login
+  const handleLoginSuccess = async (token: string, user: any, pin: string) => {
+    sessionStorage.setItem("authToken", token);
+    setUsername(user.username);
+    setEmail(user.email);
+    setCurrentUserId(user.id);
+    setUserPin(pin);
+    setAuthState("authenticated");
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('authToken');
-    setAuthState('login');
+    sessionStorage.removeItem("authToken");
+    setAuthState("login");
     setShowProfile(false);
   };
 
@@ -84,45 +168,84 @@ function App() {
       alert("⚠️ Please select a wipe mode!");
       return;
     }
+    if (selectedWipe === "Purge" && !selectedRandomMethod) {
+      setShowRandomWipeModal(true);
+      return;
+    }
     setShowConfirm(true);
   };
 
   const confirmDelete = async () => {
-    if (pin === CORRECT_PIN) {
-      const selected = drives.filter((d) => d.selected).map((d) => d.name);
-
-      try {
-        const filePath = await invoke<string>("generate_certificate", {
-          drive: selected.join(", "),
-          wipeMode: selectedWipe,
-          user: username,
-        });
-
-        alert(`✅ Wiping completed!\nCertificate saved at: ${filePath}`);
-      } catch (err) {
-        alert(`❌ Failed to generate certificate: ${err}`);
+    const selected = drives.filter((d) => d.selected).map((d) => d.name);
+    try {
+      const isValid = await invoke<boolean>("verify_user_pin", {
+        userId: currentUserId,
+        pin: pin,
+      });
+      if (!isValid) {
+        const newAttempts = pinAttempts + 1;
+        setPinAttempts(newAttempts);
+        
+        if (newAttempts >= 3) {
+          // Lock sensitive files after 3 failed attempts
+          if (sensitiveFiles.length > 0) {
+            await invoke("lock_sensitive_files", {
+              filePaths: sensitiveFiles,
+              userId: currentUserId
+            });
+            setFilesLocked(true);
+            setPinAttempts(0);
+            alert("🔒 Sensitive files have been locked due to multiple failed PIN attempts!");
+          }
+        }
+        
+        setError(`❌ Incorrect PIN. Try again. (${newAttempts}/3 attempts)`);
+        return;
       }
 
+      // Reset attempts on successful PIN
+      setPinAttempts(0);
+
+      // Generate certificate in database only (no file download)
+      await invoke("generate_certificate", {
+        userId: currentUserId,
+        drive: selected.join(", "),
+        wipeMode: selectedWipe === "Purge" ? selectedRandomMethod : selectedWipe,
+        user: username,
+      });
+
+      alert(`✅ Wiping completed!`);
       setShowConfirm(false);
       setPin("");
       setError("");
-    } else {
-      setError("❌ Incorrect PIN. Try again.");
+    } catch (err) {
+      alert(`❌ Error: ${err}`);
     }
   };
 
   // Show authentication pages if not authenticated
-  if (authState === 'register') {
-    return <Register onSuccess={handleRegisterSuccess} onSwitch={() => setAuthState('login')} />;
+  if (authState === "register") {
+    return (
+      <Register
+        onSuccess={handleRegisterSuccess}
+        onSwitch={() => setAuthState("login")}
+      />
+    );
   }
 
-  if (authState === 'login') {
-    return <Login onSuccess={handleLoginSuccess} onSwitch={() => setAuthState('register')} />;
+  if (authState === "login") {
+    return (
+      <Login
+        onSuccess={handleLoginSuccess}
+        onSwitch={() => setAuthState("register")}
+      />
+    );
   }
 
   const handleVerifyCertificate = () => {
     setShowUploadModal(true);
   };
+  
   return (
     <main className={`app-layout theme-${theme}`}>
       {/* Top Bar */}
@@ -156,19 +279,20 @@ function App() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
+
+                <br />
+                <button className="logout-btn">Change email</button>
+                <br />
+                <button
+                  className="logout-btn"
+                  onClick={() => {
+                    handleLogout();
+                    closeProfile();
+                  }}
+                >
+                  Logout
+                </button>
               </div>
-              <button className="logout-btn">Change email</button>
-              <br />
-              <br />
-              <button
-                className="logout-btn"
-                onClick={() => {
-                  handleLogout();
-                  closeProfile();
-                }}
-              >
-                Logout
-              </button>
             </div>
           )}
         </div>
@@ -186,15 +310,24 @@ function App() {
             <span>Wipe Methods</span>
           </div>
 
-
           <div
-            className={`sidebar-item ${currentPage === "dashboard" ? "active" : ""}`}
+            className={`sidebar-item ${
+              currentPage === "dashboard" ? "active" : ""
+            }`}
             onClick={() => setCurrentPage("dashboard")}
           >
             <span className="sidebar-icon">📊</span>
             <span>Dashboard</span>
           </div>
-
+          <div
+            className={`sidebar-item ${
+              currentPage === "certificates" ? "active" : ""
+            }`}
+            onClick={() => setCurrentPage("certificates")}
+          >
+            <span className="sidebar-icon">📜</span>
+            <span>Certificates</span>
+          </div>
           <div
             className="sidebar-item sidebar-important"
             onClick={handleVerifyCertificate}
@@ -202,13 +335,30 @@ function App() {
             <span className="sidebar-icon">✅</span>
             <span>Verify Certificate</span>
           </div>
+          <div
+            className={`sidebar-item ${
+              currentPage === "sensitive-files" ? "active" : ""
+            }`}
+            onClick={() => setCurrentPage("sensitive-files")}
+          >
+            <span className="sidebar-icon">🔒</span>
+            <span>Sensitive Files</span>
+          </div>
+          
+          <div
+            className={`sidebar-item ${
+              currentPage === "bootable" ? "active" : ""
+            }`}
+            onClick={() => setCurrentPage("bootable")}
+          >
+            <span className="sidebar-icon">💿</span>
+            <span>Bootable USB/ISO</span>
+          </div>
 
           <div className="sidebar-item" onClick={() => setShowSettings(true)}>
             <MoreVertical className="sidebar-icon" />
             <span>Settings</span>
           </div>
-
-
         </div>
       </aside>
 
@@ -221,7 +371,9 @@ function App() {
               {drives.map((drive, index) => (
                 <div
                   key={drive.name}
-                  className={`drive-option ${drive.selected ? "selected" : ""}`}
+                  className={`drive-option ${
+                    drive.selected ? "selected" : ""
+                  }`}
                   onClick={() => toggleDrive(index)}
                 >
                   {drive.name}
@@ -232,7 +384,9 @@ function App() {
             <h3>Wipe Mode</h3>
             <div className="wipe-modes">
               <div
-                className={`wipe-option ${selectedWipe === "Clear" ? "selected" : ""}`}
+                className={`wipe-option ${
+                  selectedWipe === "Clear" ? "selected" : ""
+                }`}
                 onClick={() => setSelectedWipe("Clear")}
               >
                 <strong>Clear</strong>
@@ -240,15 +394,25 @@ function App() {
                 <span>Quick removal (Recoverable)</span>
               </div>
               <div
-                className={`wipe-option ${selectedWipe === "Purge" ? "selected" : ""}`}
-                onClick={() => setSelectedWipe("Purge")}
+                className={`wipe-option ${
+                  selectedWipe === "Purge" ? "selected" : ""
+                }`}
+                onClick={() => {
+                  setSelectedWipe("Purge");
+                  setShowRandomWipeModal(true);
+                }}
               >
                 <strong>Random Byte</strong>
                 <br />
-                <span>Secure Wipe (hard to recover)</span>
+                <span>
+                  Secure Wipe (hard to recover)
+                  {selectedRandomMethod ? ` — ${selectedRandomMethod}` : ""}
+                </span>
               </div>
               <div
-                className={`wipe-option ${selectedWipe === "Destroy" ? "selected" : ""}`}
+                className={`wipe-option ${
+                  selectedWipe === "Destroy" ? "selected" : ""
+                }`}
                 onClick={() => setSelectedWipe("Destroy")}
               >
                 <strong>Destroy</strong>
@@ -266,6 +430,25 @@ function App() {
         {currentPage === "dashboard" && (
           <Dashboard setCurrentPage={setCurrentPage} theme={theme} />
         )}
+
+        {currentPage === "certificates" && currentUserId && (
+          <Certificates userId={currentUserId} />
+        )}
+
+        {currentPage === "sensitive-files" && (
+          <SensitiveFiles 
+            sensitiveFiles={sensitiveFiles}
+            setSensitiveFiles={setSensitiveFiles}
+            filesLocked={filesLocked}
+            setFilesLocked={setFilesLocked}
+            setPinAttempts={setPinAttempts}
+            currentUserId={currentUserId}
+          />
+        )}
+
+        {currentPage === "bootable" && (
+          <BootablePage />
+        )}
       </section>
 
       {/* Footer */}
@@ -273,7 +456,7 @@ function App() {
         <nav className="footer-links">
           <a href="#">About</a>
           <a href="#">Contact</a>
-          <a href="#">Help</a>
+          <a href="#" onClick={() => setShowHelpModal(true)}>Help</a>
         </nav>
         <small>
           © {new Date().getFullYear()} Secure Wipe Utility. All rights reserved.
@@ -300,6 +483,38 @@ function App() {
         </div>
       )}
 
+      {/* Random Wipe Modal */}
+      {showRandomWipeModal && (
+        <div className="modal">
+          <div className="modal-content">
+            <h2>Select Random Wipe Method</h2>
+            <div className="random-wipe-methods">
+              {["Single Pass", "3 Pass DDOD", "7 Pass", "Gutmann"].map(
+                (method) => (
+                  <button
+                    key={method}
+                    className={
+                      selectedRandomMethod === method ? "selected" : ""
+                    }
+                    onClick={() => {
+                      setSelectedRandomMethod(method);
+                      setShowRandomWipeModal(false);
+                    }}
+                  >
+                    {method}
+                  </button>
+                )
+              )}
+            </div>
+            <div className="modal-actions">
+              <button onClick={() => setShowRandomWipeModal(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Settings Modal */}
       {showSettings && (
         <div className="modal">
@@ -308,16 +523,18 @@ function App() {
             <div className="settings-section">
               <label>Theme</label>
               <div className="theme-toggle">
-                <Sun
-                  size={28}
-                  className={`theme-icon ${theme === "green-soft" ? "selected" : ""}`}
+                <div
+                  className={`theme-icon sun-icon ${
+                    theme === "green-soft" ? "selected" : ""
+                  }`}
                   onClick={() => setTheme("green-soft")}
-                />
-                <Moon
-                  size={28}
-                  className={`theme-icon ${theme === "dark-professional" ? "selected" : ""}`}
+                ></div>
+                <div
+                  className={`theme-icon moon-icon ${
+                    theme === "dark-professional" ? "selected" : ""
+                  }`}
                   onClick={() => setTheme("dark-professional")}
-                />
+                ></div>
               </div>
             </div>
             <div className="settings-section">
@@ -331,13 +548,44 @@ function App() {
                   <span>Privacy Mode</span>
                   <input type="checkbox" checked={privacyMode} readOnly />
                 </div>
+               <div className="privacy-option" onClick={() => setShowSecurityOptionsModal(true)}>
+  <Lock className="option-icon" />
+  <span>Security and password</span>
+</div>
                 <div
                   className="privacy-option"
-                  onClick={() => setEnableEncryption(!enableEncryption)}
+                  onClick={async () => {
+                    if (filesLocked) {
+                      const pin = prompt("Enter PIN to unlock sensitive files:");
+                      if (pin) {
+                        try {
+                          const isValid = await invoke<boolean>("verify_user_pin", {
+                            userId: currentUserId,
+                            pin: pin,
+                          });
+                          if (isValid) {
+                            await invoke("unlock_sensitive_files", {
+                              filePaths: sensitiveFiles,
+                              userId: currentUserId
+                            });
+                            setFilesLocked(false);
+                            setPinAttempts(0);
+                            alert("🔓 Sensitive files have been unlocked!");
+                          } else {
+                            alert("❌ Incorrect PIN!");
+                          }
+                        } catch (err) {
+                          alert(`Error: ${err}`);
+                        }
+                      }
+                    }
+                  }}
                 >
                   <Lock className="option-icon" />
-                  <span>Security and password</span>
+                  <span>{filesLocked ? "Unlock Sensitive Files" : "Files Status: Unlocked"}</span>
                 </div>
+
+
               </div>
             </div>
             <div className="modal-actions">
@@ -346,6 +594,233 @@ function App() {
           </div>
         </div>
       )}
+      {showPinPasswordModal && (
+  <div className="modal">
+    <div className="modal-content">
+      <h2>Enter Password to Reveal PIN</h2>
+      <input
+        type="password"
+        value={pinPassword}
+        onChange={(e) => setPinPassword(e.target.value)}
+        placeholder="Enter your password"
+      />
+      {pinPasswordError && <p className="error">{pinPasswordError}</p>}
+      <div className="modal-actions">
+        <button
+          onClick={async () => {
+            if (!pinPassword) return setPinPasswordError("Password is required");
+
+            try {
+              // Call backend to verify password
+              const isValid = await invoke<boolean>("verify_user_password", {
+                userId: currentUserId,
+                password: pinPassword,
+              });
+
+              if (isValid) {
+                setShowPinPasswordModal(false);
+                setShowPinDisplayModal(true);
+                setPinPassword("");
+                setPinPasswordError("");
+              } else {
+                setPinPasswordError("❌ Incorrect password");
+              }
+            } catch (err) {
+              setPinPasswordError(`⚠️ Error: ${err}`);
+            }
+          }}
+        >
+          Verify
+        </button>
+        <button
+          onClick={() => {
+            setShowPinPasswordModal(false);
+            setPinPassword("");
+            setPinPasswordError("");
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+      {/* Security Options Modal */}
+      {showSecurityOptionsModal && (
+        <div className="modal">
+          <div className="modal-content">
+            <h2>🔐 Security Options</h2>
+            <div className="security-options">
+              <button 
+                className="security-option-btn"
+                onClick={() => {
+                  setShowSecurityOptionsModal(false);
+                  setShowChangePasswordModal(true);
+                }}
+              >
+                <span className="option-icon">🔑</span>
+                Change Account Password
+              </button>
+              
+              <button 
+                className="security-option-btn"
+                onClick={() => {
+                  setShowSecurityOptionsModal(false);
+                  setShowPinPasswordModal(true);
+                }}
+              >
+                <span className="option-icon">👁️</span>
+                View Confirmation PIN
+              </button>
+              
+              <button 
+                className="security-option-btn"
+                onClick={() => {
+                  setShowSecurityOptionsModal(false);
+                  setShowChangePinModal(true);
+                }}
+              >
+                <span className="option-icon">🔄</span>
+                Change Confirmation PIN
+              </button>
+            </div>
+            <div className="modal-actions">
+              <button onClick={() => setShowSecurityOptionsModal(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Change Password Modal */}
+      {showChangePasswordModal && (
+        <div className="modal">
+          <div className="modal-content">
+            <h2>Change Account Password</h2>
+            <input
+              type="password"
+              value={pinPassword}
+              onChange={(e) => setPinPassword(e.target.value)}
+              placeholder="Enter current password"
+            />
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Enter new password"
+            />
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Confirm new password"
+            />
+            {passwordError && <p className="error">{passwordError}</p>}
+            <div className="modal-actions">
+              <button
+                onClick={async () => {
+                  if (!pinPassword || !newPassword || !confirmPassword) {
+                    setPasswordError("All fields are required");
+                    return;
+                  }
+                  if (newPassword !== confirmPassword) {
+                    setPasswordError("New passwords don't match");
+                    return;
+                  }
+                  try {
+                    await invoke("change_user_password", {
+                      userId: currentUserId,
+                      currentPassword: pinPassword,
+                      newPassword: newPassword
+                    });
+                    alert("✅ Password changed successfully!");
+                    setShowChangePasswordModal(false);
+                    setPinPassword("");
+                    setNewPassword("");
+                    setConfirmPassword("");
+                    setPasswordError("");
+                  } catch (err) {
+                    setPasswordError(`❌ ${err}`);
+                  }
+                }}
+              >
+                Change Password
+              </button>
+              <button onClick={() => {
+                setShowChangePasswordModal(false);
+                setPinPassword("");
+                setNewPassword("");
+                setConfirmPassword("");
+                setPasswordError("");
+              }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Change PIN Modal */}
+      {showChangePinModal && (
+        <div className="modal">
+          <div className="modal-content">
+            <h2>Change Confirmation PIN</h2>
+            <input
+              type="password"
+              value={pinPassword}
+              onChange={(e) => setPinPassword(e.target.value)}
+              placeholder="Enter current password"
+            />
+            {passwordError && <p className="error">{passwordError}</p>}
+            <div className="modal-actions">
+              <button
+                onClick={async () => {
+                  if (!pinPassword) {
+                    setPasswordError("Password is required");
+                    return;
+                  }
+                  try {
+                    const newPin = await invoke<string>("change_user_pin", {
+                      userId: currentUserId,
+                      password: pinPassword
+                    });
+                    setUserPin(newPin);
+                    alert(`✅ New PIN generated: ${newPin}\nPlease save it securely!`);
+                    setShowChangePinModal(false);
+                    setPinPassword("");
+                    setPasswordError("");
+                  } catch (err) {
+                    setPasswordError(`❌ ${err}`);
+                  }
+                }}
+              >
+                Generate New PIN
+              </button>
+              <button onClick={() => {
+                setShowChangePinModal(false);
+                setPinPassword("");
+                setPasswordError("");
+              }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PIN Display Modal */}
+      {showPinDisplayModal && (
+        <div className="modal">
+          <div className="modal-content">
+            <h2>🔐 Your Confirmation PIN</h2>
+            <div className="pin-display-large">
+              <strong>{userPin ?? "PIN not available"}</strong>
+            </div>
+            <p className="pin-warning">⚠️ Please save this PIN securely. You'll need it for wipe confirmations.</p>
+            <div className="modal-actions">
+              <button onClick={() => setShowPinDisplayModal(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
 
       {/* Upload Certificate Modal */}
       {showUploadModal && (
@@ -354,7 +829,7 @@ function App() {
             <h2>Upload Certificate</h2>
             <input
               type="file"
-              accept=".txt"
+              accept=".pdf,.txt"
               onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
             />
             <div className="modal-actions">
@@ -364,35 +839,47 @@ function App() {
                     alert("⚠️ Please select a certificate file!");
                     return;
                   }
+
                   try {
-                    const readFileAsText = (file: File): Promise<string> => {
-                      return new Promise((resolve, reject) => {
-                        const reader = new FileReader();
+                    const fileName = selectedFile.name.toLowerCase();
+                    let isValid = false;
 
-                        reader.onload = () => {
-                          resolve(reader.result as string);
-                        };
-
-                        reader.onerror = () => {
-                          reject(reader.error);
-                        };
-
-                        reader.readAsText(file);
+                    if (fileName.endsWith('.pdf')) {
+                      // Handle PDF verification
+                      const fileBuffer = await selectedFile.arrayBuffer();
+                      const uint8Array = new Uint8Array(fileBuffer);
+                      
+                      isValid = await invoke<boolean>("verify_certificate_pdf", {
+                        pdfData: Array.from(uint8Array),
                       });
-                    };
+                    } else if (fileName.endsWith('.txt')) {
+                      // Handle text file verification (legacy)
+                      const readFileAsText = (file: File): Promise<string> =>
+                        new Promise((resolve, reject) => {
+                          const reader = new FileReader();
+                          reader.onload = () => resolve(reader.result as string);
+                          reader.onerror = () => reject(reader.error);
+                          reader.readAsText(file);
+                        });
 
-                    const content = await readFileAsText(selectedFile);
-                    const isValid = await invoke<boolean>("verify_certificate", {
-                      content,
-                    });
+                      const content = await readFileAsText(selectedFile);
+                      isValid = await invoke<boolean>("verify_certificate", {
+                        content,
+                      });
+                    } else {
+                      alert("⚠️ Please select a PDF or TXT certificate file!");
+                      return;
+                    }
+
                     if (isValid) {
                       alert("✅ Certificate is valid and untampered!");
                     } else {
-                      alert("❌ Certificate verification failed (hash mismatch).");
+                      alert("❌ Certificate verification failed.");
                     }
                   } catch (err) {
                     alert(`⚠️ Error verifying certificate: ${err}`);
                   }
+
                   setShowUploadModal(false);
                   setSelectedFile(null);
                 }}
@@ -404,30 +891,190 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Bootable USB Modal */}
+      <BootableModal 
+        show={showBootableModal} 
+        onClose={() => setShowBootableModal(false)} 
+      />
+
+      {/* Help Modal */}
+      {showHelpModal && (
+        <div className="modal">
+          <div className="modal-content" style={{maxWidth: '800px', width: '90vw'}}>
+            <h2>🛡️ Secure Wipe Features</h2>
+            
+            <div className="wipe-modes">
+              <div className="wipe-option">
+                <strong>🏠 Wipe Methods</strong>
+                <br />
+                <span><strong>Clear:</strong> Quick removal (recoverable) - Fast deletion for non-sensitive data</span>
+                <br />
+                <span><strong>Random Byte:</strong> Secure wipe (hard to recover) - Multiple pass overwriting with random data</span>
+                <br />
+                <span><strong>Destroy:</strong> Cryptographic erase (irrecoverable) - Military-grade secure deletion</span>
+              </div>
+
+              <div className="wipe-option">
+                <strong>📊 Dashboard</strong>
+                <br />
+                <span>View drive information, browse files, and monitor storage usage across all connected drives</span>
+              </div>
+
+              <div className="wipe-option">
+                <strong>📜 Certificates</strong>
+                <br />
+                <span>Generate and download tamper-proof certificates as evidence of secure wipe operations</span>
+              </div>
+
+              <div className="wipe-option">
+                <strong>🔒 Sensitive Files</strong>
+                <br />
+                <span>Protect important files by automatically locking them after failed PIN attempts during wipe operations</span>
+              </div>
+
+              <div className="wipe-option">
+                <strong>💿 Bootable USB/ISO</strong>
+                <br />
+                <span>Create bootable media for OS-independent secure wiping with complete hardware access</span>
+              </div>
+
+              <div className="wipe-option">
+                <strong>🔐 Security Features</strong>
+                <br />
+                <span>PIN protection, password management, certificate verification, and file locking for maximum security</span>
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button onClick={() => setShowHelpModal(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </main>
   );
 }
 
-// Dashboard Page Component
+// Dashboard Component
+// Bootable Page Component
+function BootablePage() {
+  const [usbDrives, setUsbDrives] = useState<string[]>([]);
+  const [selectedUsb, setSelectedUsb] = useState<string>("");
+  const [isCreating, setIsCreating] = useState(false);
+
+  useEffect(() => {
+    loadUsbDrives();
+  }, []);
+
+  const loadUsbDrives = async () => {
+    try {
+      const drives = await invoke<string[]>("list_usb_drives");
+      setUsbDrives(drives);
+    } catch (err) {
+      console.error("Failed to load USB drives:", err);
+    }
+  };
+
+  const createBootableUsb = async () => {
+    if (!selectedUsb) {
+      alert("Please select a USB drive");
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      await invoke("build_bootable_environment");
+      await invoke("create_iso");
+      await invoke("create_bootable_usb", {
+        usbDrive: selectedUsb,
+        isoPath: "secure_wipe_boot.iso"
+      });
+      
+      alert("✅ Bootable USB created successfully!\n\nUsage:\n1. Insert USB into target computer\n2. Boot from USB (F12 during startup)\n3. Run secure wipe without OS");
+    } catch (err) {
+      alert(`❌ Error: ${err}`);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  return (
+    <div className="card">
+      <h2>💿 Bootable USB/ISO Creator</h2>
+      
+      <div className="bootable-info">
+        <h3>Create Secure Wipe Bootable Media</h3>
+        <p>Generate a bootable USB drive for OS-independent secure wiping.</p>
+      </div>
+
+      <div className="drive-list">
+        <label>Select USB Drive:</label>
+        <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
+          <select 
+            className="drive-option"
+            value={selectedUsb} 
+            onChange={(e) => setSelectedUsb(e.target.value)}
+            disabled={isCreating}
+            style={{flex: 1}}
+          >
+            <option value="">Choose USB Drive...</option>
+            {usbDrives.map((drive, index) => (
+              <option key={index} value={drive}>
+                {drive}
+              </option>
+            ))}
+          </select>
+          
+          <button className="back-btn" onClick={loadUsbDrives} disabled={isCreating}>
+            🔄 Refresh
+          </button>
+        </div>
+      </div>
+
+      <button 
+        className="proceed-btn"
+        onClick={createBootableUsb} 
+        disabled={isCreating || !selectedUsb}
+      >
+        {isCreating ? "Creating..." : "🚀 Create Bootable USB"}
+      </button>
+
+      <div className="wipe-modes">
+        <div className="wipe-option">
+          <strong>🔒 Security Benefits</strong>
+          <br />
+          <span>OS-independent • Complete hardware access • No interference • Forensic-grade</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Dashboard({
   setCurrentPage,
   theme,
 }: {
-  setCurrentPage: (page: "home" | "dashboard") => void;
+  setCurrentPage: (page: "home" | "dashboard" | "certificates" | "sensitive-files" | "bootable") => void;
   theme: string;
 }) {
   const [driveInfo, setDriveInfo] = useState<
     { name: string; total: number; free: number }[]
   >([]);
   const [selectedDrive, setSelectedDrive] = useState<string | null>(null);
-  const [files, setFiles] = useState<{ name: string; size: number }[]>([]);
+  const [currentPath, setCurrentPath] = useState<string>("");
+  const [files, setFiles] = useState<{ name: string; size: number; isDirectory: boolean; fullPath: string }[]>([]);
   const [search, setSearch] = useState("");
+  const [pathHistory, setPathHistory] = useState<string[]>([]);
 
   useEffect(() => {
     const fetchDriveInfo = async () => {
       try {
         const info = await invoke<[string, number, number][]>("drive_info");
-        setDriveInfo(info.map(([name, total, free]) => ({ name, total, free })));
+        setDriveInfo(
+          info.map(([name, total, free]) => ({ name, total, free }))
+        );
       } catch (err) {
         console.error("Failed to fetch drive info:", err);
       }
@@ -437,11 +1084,37 @@ function Dashboard({
 
   const handleDriveClick = async (drive: string) => {
     setSelectedDrive(drive);
+    setCurrentPath(drive);
+    setPathHistory([]);
+    await loadFiles(drive);
+  };
+
+  const loadFiles = async (path: string) => {
     try {
-      const filesList = await invoke<[string, number][]>("list_files", { drive });
-      setFiles(filesList.map(([name, size]) => ({ name, size })));
+      const filesList = await invoke<Array<[string, number, boolean, string]>>("list_all_files", { path });
+      setFiles(filesList.map(([name, size, isDirectory, fullPath]) => ({ name, size, isDirectory, fullPath })));
     } catch (err) {
       console.error("Error listing files:", err);
+    }
+  };
+
+  const handleFileClick = async (file: { name: string; size: number; isDirectory: boolean; fullPath: string }) => {
+    if (file.isDirectory) {
+      setPathHistory(prev => [...prev, currentPath]);
+      setCurrentPath(file.fullPath);
+      await loadFiles(file.fullPath);
+    }
+  };
+
+  const handleBackClick = async () => {
+    if (pathHistory.length > 0) {
+      const previousPath = pathHistory[pathHistory.length - 1];
+      setPathHistory(prev => prev.slice(0, -1));
+      setCurrentPath(previousPath);
+      await loadFiles(previousPath);
+    } else {
+      setSelectedDrive(null);
+      setCurrentPath("");
     }
   };
 
@@ -462,7 +1135,9 @@ function Dashboard({
       <div className="dashboard-scrollable">
         {selectedDrive ? (
           <>
-            <h2>Files in {selectedDrive}</h2>
+            <div className="breadcrumb">
+              <h2>📁 {currentPath}</h2>
+            </div>
             <input
               type="text"
               placeholder="🔍 Search files..."
@@ -473,20 +1148,30 @@ function Dashboard({
             <div className="file-grid-container">
               <ul className="file-grid">
                 {filteredFiles.map((f) => (
-                  <li key={f.name} className="file-card">
+                  <li 
+                    key={f.fullPath} 
+                    className={`file-card ${f.isDirectory ? 'directory' : 'file'}`}
+                    onClick={() => handleFileClick(f)}
+                  >
                     <div className="file-info">
-                      <span className="file-name">{f.name}</span>
-                      <span className="file-size">{formatSize(f.size)}</span>
+                      <span className="file-icon">
+                        {f.isDirectory ? '📁' : '📄'}
+                      </span>
+                      <div className="file-details">
+                        <span className="file-name">{f.name}</span>
+                        <span className="file-size">{f.isDirectory ? 'Directory' : formatSize(f.size)}</span>
+                      </div>
                     </div>
                   </li>
                 ))}
               </ul>
             </div>
             <p className="file-summary">
-              Showing {filteredFiles.length} files — Total size: {formatSize(totalFilteredSize)}
+              Showing {filteredFiles.length} items — Total size:{" "}
+              {formatSize(totalFilteredSize)}
             </p>
-            <button onClick={() => setSelectedDrive(null)} className="back-btn">
-              ⬅ Back to Drive Dashboard
+            <button onClick={handleBackClick} className="back-btn">
+              ⬅ {pathHistory.length > 0 ? 'Back' : 'Back to Drive Dashboard'}
             </button>
           </>
         ) : (
@@ -504,10 +1189,14 @@ function Dashboard({
                   >
                     <h3>{d.name}</h3>
                     <div className="storage-bar">
-                      <div className="storage-used" style={{ width: `${percent}%` }}></div>
+                      <div
+                        className="storage-used"
+                        style={{ width: `${percent}%` }}
+                      ></div>
                     </div>
                     <small>
-                      {Math.round(used / 1e9)} GB used / {Math.round(d.total / 1e9)} GB total
+                      {Math.round(used / 1e9)} GB used /{" "}
+                      {Math.round(d.total / 1e9)} GB total
                     </small>
                   </div>
                 );
@@ -518,8 +1207,219 @@ function Dashboard({
       </div>
     </div>
   );
-
 }
 
+// Certificates Component (full center width)
+function Certificates({ userId }: { userId: number }) {
+  const [certs, setCerts] = useState<Certificate[]>([]);
+  const [expandedCert, setExpandedCert] = useState<number | null>(null);
+
+  useEffect(() => {
+    const fetchCertificates = async () => {
+      try {
+        const result = await invoke<Certificate[]>("list_certificates", {
+          userId,
+        });
+        setCerts(result);
+      } catch (err) {
+        console.error("Error fetching certificates:", err);
+      }
+    };
+    fetchCertificates();
+  }, [userId]);
+
+  const toggleCert = (id: number) => {
+    setExpandedCert(expandedCert === id ? null : id);
+  };
+
+  return (
+    <div className="certificates-container">
+      <h2>My Certificates</h2>
+      <ul className="cert-list">
+        {certs.map((cert) => (
+          <li key={cert.id} className="cert-item">
+            <div className="cert-summary" onClick={() => toggleCert(cert.id)}>
+              <strong>{cert.drive}</strong> — {cert.wipe_mode}
+              <span className="expand-icon">
+                {expandedCert === cert.id ? "▲" : "▼"}
+              </span>
+            </div>
+            {expandedCert === cert.id && (
+              <div className="cert-details">
+                <p>
+                  <strong>Timestamp:</strong> {cert.timestamp}
+                </p>
+                <p>
+                  <strong>Device:</strong> {cert.device_id}
+                </p>
+                <p>
+                  <strong>Content:</strong>
+                  <br />
+                  <pre>{cert.content}</pre>
+                </p>
+                <p>
+                  <strong>Hash:</strong> {cert.hash}
+                </p>
+                <button 
+                  className="back-btn"
+                  onClick={async () => {
+                    try {
+                      await invoke("download_certificate_pdf", {
+                        drive: cert.drive,
+                        wipeMode: cert.wipe_mode,
+                        deviceId: cert.device_id,
+                        timestamp: cert.timestamp,
+                        hash: cert.hash,
+                        filename: `certificate_${cert.drive.replace(/[:\\\s]/g, '_')}_${cert.timestamp.replace(/[:\s]/g, '_')}.pdf`
+                      });
+                    } catch (err) {
+                      alert(`Error downloading certificate: ${err}`);
+                    }
+                  }}
+                >
+                  Download PDF
+                </button>
+              </div>
+              
+            )}
+          </li>
+          
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// Sensitive Files Component
+function SensitiveFiles({
+  sensitiveFiles,
+  setSensitiveFiles,
+  filesLocked,
+  setFilesLocked,
+  setPinAttempts,
+  currentUserId,
+}: {
+  sensitiveFiles: string[];
+  setSensitiveFiles: React.Dispatch<React.SetStateAction<string[]>>;
+  filesLocked: boolean;
+  setFilesLocked: React.Dispatch<React.SetStateAction<boolean>>;
+  setPinAttempts: React.Dispatch<React.SetStateAction<number>>;
+  currentUserId: number | null;
+}) {
+  const handleAddFiles = async () => {
+    try {
+      const selectedFiles = await invoke<string[]>("select_files");
+      setSensitiveFiles(prev => [...prev, ...selectedFiles]);
+    } catch (err) {
+      alert(`Error selecting files: ${err}`);
+    }
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setSensitiveFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUnlockFiles = async () => {
+    const pin = prompt("Enter PIN to unlock sensitive files:");
+    if (pin) {
+      try {
+        const isValid = await invoke<boolean>("verify_user_pin", {
+          userId: currentUserId,
+          pin: pin,
+        });
+        if (isValid) {
+          await invoke("unlock_sensitive_files", {
+            filePaths: sensitiveFiles,
+            userId: currentUserId
+          });
+          setFilesLocked(false);
+          setPinAttempts(0);
+          alert("🔓 Sensitive files have been unlocked!");
+        } else {
+          alert("❌ Incorrect PIN!");
+        }
+      } catch (err) {
+        alert(`Error: ${err}`);
+      }
+    }
+  };
+
+  return (
+    <div className="sensitive-files-page">
+      <div className="sensitive-files-header">
+        <h2>🔒 Sensitive Files Protection</h2>
+        <p>Manage files that will be automatically locked after 3 failed PIN attempts during wipe operations.</p>
+        
+        <div className="status-indicator">
+          <div className={`status-badge ${filesLocked ? 'locked' : 'unlocked'}`}>
+            {filesLocked ? '🔒 Files Locked' : '🔓 Files Unlocked'}
+          </div>
+        </div>
+      </div>
+
+      <div className="sensitive-files-actions">
+        <button className="add-files-btn" onClick={handleAddFiles}>
+          <span className="btn-icon">📁</span>
+          Add Files
+        </button>
+        
+        {filesLocked && (
+          <button className="unlock-btn" onClick={handleUnlockFiles}>
+            <span className="btn-icon">🔓</span>
+            Unlock Files
+          </button>
+        )}
+      </div>
+
+      <div className="files-container">
+        {sensitiveFiles.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">📁</div>
+            <h3>No Sensitive Files Selected</h3>
+            <p>Click "Add Files" to select files you want to protect.</p>
+          </div>
+        ) : (
+          <div className="files-grid">
+            {sensitiveFiles.map((file, index) => {
+              const fileName = file.split(/[\\\/]/).pop() || file;
+              const filePath = file.replace(fileName, '');
+              
+              return (
+                <div key={index} className={`file-card ${filesLocked ? 'locked' : ''}`}>
+                  <div className="file-icon">
+                    {filesLocked ? '🔒' : '📄'}
+                  </div>
+                  <div className="file-details">
+                    <div className="file-name">{fileName}</div>
+                    <div className="file-path">{filePath}</div>
+                  </div>
+                  <button 
+                    className="remove-btn"
+                    onClick={() => handleRemoveFile(index)}
+                    disabled={filesLocked}
+                  >
+                    ✕
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="info-section">
+        <div className="info-card">
+          <h3>ℹ️ How It Works</h3>
+          <ul>
+            <li>Select sensitive files you want to protect</li>
+            <li>Files are automatically locked after 3 failed PIN attempts</li>
+            <li>Use your confirmation PIN to unlock files</li>
+            <li>Locked files cannot be accessed until unlocked</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default App;
