@@ -3842,6 +3842,7 @@ dependencies = [
  "iso9660",
  "jsonwebtoken",
  "machine-uid",
+ "once_cell",
  "pdf-extract",
  "printpdf",
  "rand 0.8.5",
