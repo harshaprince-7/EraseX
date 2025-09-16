@@ -5,6 +5,8 @@ import "./App.css";
 import Register from "./Register";
 import Login from "./Login";
 import BootableModal from "./BootableModal";
+import PxeBootModal from "./PxeBootModal";
+
 
 interface Drive {
   name: string;
@@ -70,6 +72,8 @@ function App() {
   const [usbDrives, setUsbDrives] = useState<string[]>([]);
   const [selectedUsb, setSelectedUsb] = useState<string>("");
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showPxeBootModal, setShowPxeBootModal] = useState(false);
+
 
   const toggleProfile = () => setShowProfile(!showProfile);
   const closeProfile = () => setShowProfile(false);
@@ -354,6 +358,16 @@ function App() {
             <span className="sidebar-icon">💿</span>
             <span>Bootable USB/ISO</span>
           </div>
+          
+          <div
+            className="sidebar-item"
+            onClick={() => setShowPxeBootModal(true)}
+          >
+            <span className="sidebar-icon">🌐</span>
+            <span>PXE Network Boot</span>
+          </div>
+          
+
 
           <div className="sidebar-item" onClick={() => setShowSettings(true)}>
             <MoreVertical className="sidebar-icon" />
@@ -897,6 +911,14 @@ function App() {
         show={showBootableModal} 
         onClose={() => setShowBootableModal(false)} 
       />
+      
+      {/* PXE Boot Modal */}
+      <PxeBootModal 
+        isOpen={showPxeBootModal} 
+        onClose={() => setShowPxeBootModal(false)} 
+      />
+      
+
 
       {/* Help Modal */}
       {showHelpModal && (
@@ -937,6 +959,12 @@ function App() {
                 <strong>💿 Bootable USB/ISO</strong>
                 <br />
                 <span>Create bootable media for OS-independent secure wiping with complete hardware access</span>
+              </div>
+              
+              <div className="wipe-option">
+                <strong>🌐 PXE Network Boot</strong>
+                <br />
+                <span>Deploy network-based wiping for 1000+ devices simultaneously. Automated PXE server with client monitoring and certificate collection</span>
               </div>
 
               <div className="wipe-option">

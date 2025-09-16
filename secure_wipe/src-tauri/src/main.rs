@@ -16,10 +16,12 @@ use machine_uid::get;       // for device UID
 use uuid::Uuid;             // for Uuid::new_v4()
 use sha2::{Sha256, Digest};
 use std::io::Write;
-use chrono::{Utc, Duration, DateTime, SubsecRound};
+use chrono::{Utc, Duration, SubsecRound};
 
 mod bootable;
 mod iso_builder;
+mod pxe_server;
+
 
 
 
@@ -833,10 +835,10 @@ async fn select_files() -> Result<Vec<String>, String> {
 #[command]
 async fn lock_sensitive_files(
     file_paths: Vec<String>,
-    user_id: i32,
+    _user_id: i32,
 ) -> Result<(), String> {
     for file_path in &file_paths {
-        let path = std::path::Path::new(file_path);
+        let _path = std::path::Path::new(file_path);
         
         if OS == "windows" {
             // Windows: Remove all permissions except for system
@@ -859,10 +861,10 @@ async fn lock_sensitive_files(
 #[command]
 async fn unlock_sensitive_files(
     file_paths: Vec<String>,
-    user_id: i32,
+    _user_id: i32,
 ) -> Result<(), String> {
     for file_path in &file_paths {
-        let path = std::path::Path::new(file_path);
+        let _path = std::path::Path::new(file_path);
         
         if OS == "windows" {
             // Windows: Restore full control permissions
@@ -1018,7 +1020,12 @@ async fn main() {
     bootable::create_bootable_usb,
     bootable::list_usb_drives,
     iso_builder::create_iso,
-    iso_builder::build_bootable_environment
+    iso_builder::build_bootable_environment,
+    pxe_server::start_pxe_server,
+    pxe_server::stop_pxe_server,
+    pxe_server::get_client_statuses,
+    pxe_server::validate_pxe_config,
+
 ])
 
 
