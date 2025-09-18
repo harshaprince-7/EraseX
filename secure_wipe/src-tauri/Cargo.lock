@@ -3717,6 +3717,7 @@ dependencies = [
  "pkcs1",
  "pkcs8",
  "rand_core 0.6.4",
+ "sha2",
  "signature",
  "spki",
  "subtle",
@@ -3833,6 +3834,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 name = "secure_wipe"
 version = "0.1.0"
 dependencies = [
+ "base64 0.21.7",
  "bcrypt",
  "chrono",
  "dirs",
@@ -3847,6 +3849,7 @@ dependencies = [
  "printpdf",
  "rand 0.8.5",
  "rfd",
+ "rsa",
  "serde",
  "serde_json",
  "sha2",

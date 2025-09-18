@@ -362,29 +362,62 @@ pub async fn unlock_with_pin(
         return Err("No PIN set".to_string());
     }
     
-    // Unlock files
+    // Unlock files using the same logic as main unlock function
     use std::process::Command;
+    use std::path::Path;
+    
     for file_path in &file_paths {
+        let path = Path::new(file_path);
+        
         #[cfg(target_os = "windows")]
         {
-            Command::new("icacls")
-                .args(&[file_path, "/grant", "Everyone:F"])
-                .status()
-                .map_err(|e| format!("Failed to unlock {}: {}", file_path, e))?;
+            if path.exists() {
+                let username = std::env::var("USERNAME").unwrap_or_default();
+                
+                // Remove deny permissions first
+                let _ = Command::new("icacls")
+                    .args(&[file_path, "/remove:d", &username, "/T"])
+                    .output();
+                let _ = Command::new("icacls")
+                    .args(&[file_path, "/remove:d", "Everyone", "/T"])
+                    .output();
+                let _ = Command::new("icacls")
+                    .args(&[file_path, "/remove:d", "Administrators", "/T"])
+                    .output();
+                
+                // Grant full control
+                let _ = Command::new("icacls")
+                    .args(&[file_path, "/grant", &format!("{}:F", username), "/T"])
+                    .output();
+                let _ = Command::new("icacls")
+                    .args(&[file_path, "/grant", "Everyone:F", "/T"])
+                    .output();
+                
+                // Remove attributes
+                let _ = Command::new("attrib")
+                    .args(&["-R", "-S", "-H", file_path])
+                    .output();
+            }
         }
         
         #[cfg(not(target_os = "windows"))]
         {
-            Command::new("chmod")
-                .args(&["644", file_path])
-                .status()
-                .map_err(|e| format!("Failed to unlock {}: {}", file_path, e))?;
+            if path.exists() {
+                Command::new("chmod")
+                    .args(&["-R", "755", file_path])
+                    .status()
+                    .map_err(|e| format!("Failed to unlock {}: {}", file_path, e))?;
+            }
         }
     }
     
     // Update status
     let manager = get_manager();
-    manager.status.lock().unwrap().files_locked = false;
+    {
+        let mut status_guard = manager.status.lock().unwrap();
+        status_guard.files_locked = false;
+        status_guard.last_check = chrono::Utc::now().to_rfc3339();
+    }
     
     Ok(())
 }

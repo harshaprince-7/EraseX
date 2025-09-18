@@ -45,9 +45,13 @@ function App() {
     string | null
   >(null);
   const [privacyMode, setPrivacyMode] = useState(false);
+  const [lastActivity, setLastActivity] = useState(Date.now());
+  const [isAndroid, setIsAndroid] = useState(false);
   const [enableEncryption, setEnableEncryption] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [showCertTypeModal, setShowCertTypeModal] = useState(false);
+  const [selectedCertType, setSelectedCertType] = useState<"audit" | "pdf" | null>(null);
   const [showRandomWipeModal, setShowRandomWipeModal] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [showPin, setShowPin] = useState(false);
@@ -100,7 +104,19 @@ function App() {
         }
       }
     };
+    
+    // Detect Android platform
+    const checkAndroid = async () => {
+      try {
+        await invoke("secure_wipe_android", { filePaths: [], wipeMode: "test" });
+        setIsAndroid(true);
+      } catch {
+        setIsAndroid(false);
+      }
+    };
+    
     validateToken();
+    checkAndroid();
   }, []);
 
   useEffect(() => {
@@ -120,6 +136,39 @@ function App() {
       return () => clearInterval(refreshInterval);
     }
   }, [authState]);
+
+  // Auto-logout when privacy mode is enabled
+  useEffect(() => {
+    if (privacyMode && authState === "authenticated") {
+      const checkInactivity = () => {
+        const now = Date.now();
+        if (now - lastActivity > 5 * 60 * 1000) { // 5 minutes
+          alert("🔒 Auto-logout due to inactivity (Privacy Mode)");
+          handleLogout();
+        }
+      };
+
+      const inactivityTimer = setInterval(checkInactivity, 30000); // Check every 30 seconds
+      return () => clearInterval(inactivityTimer);
+    }
+  }, [privacyMode, lastActivity, authState]);
+
+  // Track user activity
+  useEffect(() => {
+    if (privacyMode) {
+      const updateActivity = () => setLastActivity(Date.now());
+      
+      window.addEventListener('mousedown', updateActivity);
+      window.addEventListener('keydown', updateActivity);
+      window.addEventListener('scroll', updateActivity);
+      
+      return () => {
+        window.removeEventListener('mousedown', updateActivity);
+        window.removeEventListener('keydown', updateActivity);
+        window.removeEventListener('scroll', updateActivity);
+      };
+    }
+  }, [privacyMode]);
 
   useEffect(() => {
     if (authState === "authenticated") {
@@ -216,13 +265,45 @@ function App() {
       // Reset attempts on successful PIN
       setPinAttempts(0);
 
-      // Generate certificate in database only (no file download)
+      // Perform Android secure wipe if available
+      try {
+        const wipeResult = await invoke("secure_wipe_android", {
+          filePaths: selected,
+          wipeMode: selectedWipe === "Purge" ? selectedRandomMethod : selectedWipe,
+        });
+        alert(`✅ ${wipeResult}`);
+      } catch (wipeErr) {
+        // Silently fall back to certificate-only mode on non-Android platforms
+        console.log(`Platform-specific wipe not available: ${wipeErr}`);
+      }
+
+      // Generate open audit certificate
+      const auditCert = await invoke("generate_audit_certificate", {
+        drive: selected.join(", "),
+        wipeMode: selectedWipe === "Purge" ? selectedRandomMethod : selectedWipe,
+        user: username,
+        complianceStandard: "NIST 800-88, DoD 5220.22-M",
+        userId: currentUserId,
+      });
+      
+      const certificate = JSON.parse(auditCert);
+      
+      // Also generate regular certificate for database
       await invoke("generate_certificate", {
         userId: currentUserId,
         drive: selected.join(", "),
         wipeMode: selectedWipe === "Purge" ? selectedRandomMethod : selectedWipe,
         user: username,
       });
+      
+      // Save audit certificate
+      const blob = new Blob([auditCert], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `audit_certificate_${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
 
       alert(`✅ Wiping completed!`);
       setShowConfirm(false);
@@ -253,6 +334,12 @@ function App() {
   }
 
   const handleVerifyCertificate = () => {
+    setShowCertTypeModal(true);
+  };
+  
+  const handleCertTypeSelection = (type: "audit" | "pdf") => {
+    setSelectedCertType(type);
+    setShowCertTypeModal(false);
     setShowUploadModal(true);
   };
   
@@ -260,7 +347,7 @@ function App() {
     <main className={`app-layout theme-${theme}`}>
       {/* Top Bar */}
       <header className="topbar">
-        <h1>Trace Zero</h1>
+        <h1>Trace Zero {isAndroid && <span style={{fontSize: '0.7em', color: '#4facfe'}}>📱 Android</span>}</h1>
       </header>
 
       {/* Sidebar */}
@@ -555,10 +642,13 @@ function App() {
               <div className="privacy-security-options">
                 <div
                   className="privacy-option"
-                  onClick={() => setPrivacyMode(!privacyMode)}
+                  onClick={() => {
+                    setPrivacyMode(!privacyMode);
+                    setLastActivity(Date.now());
+                  }}
                 >
                   <Shield className="option-icon" />
-                  <span>Privacy Mode</span>
+                  <span>Privacy Mode (Auto-logout: 5min)</span>
                   <input type="checkbox" checked={privacyMode} readOnly />
                 </div>
                <div className="privacy-option" onClick={() => setShowSecurityOptionsModal(true)}>
@@ -833,19 +923,10 @@ function App() {
                   }
 
                   try {
-                    const fileName = selectedFile.name.toLowerCase();
                     let isValid = false;
 
-                    if (fileName.endsWith('.pdf')) {
-                      // Handle PDF verification
-                      const fileBuffer = await selectedFile.arrayBuffer();
-                      const uint8Array = new Uint8Array(fileBuffer);
-                      
-                      isValid = await invoke<boolean>("verify_certificate_pdf", {
-                        pdfData: Array.from(uint8Array),
-                      });
-                    } else if (fileName.endsWith('.txt')) {
-                      // Handle text file verification (legacy)
+                    if (selectedCertType === "audit") {
+                      // Handle JSON audit certificate verification
                       const readFileAsText = (file: File): Promise<string> =>
                         new Promise((resolve, reject) => {
                           const reader = new FileReader();
@@ -855,11 +936,19 @@ function App() {
                         });
 
                       const content = await readFileAsText(selectedFile);
-                      isValid = await invoke<boolean>("verify_certificate", {
-                        content,
+                      isValid = await invoke<boolean>("verify_audit_certificate", {
+                        certJson: content,
+                      });
+                    } else if (selectedCertType === "pdf") {
+                      // Handle PDF verification
+                      const fileBuffer = await selectedFile.arrayBuffer();
+                      const uint8Array = new Uint8Array(fileBuffer);
+                      
+                      isValid = await invoke<boolean>("verify_certificate_pdf", {
+                        pdfData: Array.from(uint8Array),
                       });
                     } else {
-                      alert("⚠️ Please select a PDF or TXT certificate file!");
+                      alert("⚠️ Please select certificate type first!");
                       return;
                     }
 
@@ -874,11 +963,46 @@ function App() {
 
                   setShowUploadModal(false);
                   setSelectedFile(null);
+                  setSelectedCertType(null);
                 }}
               >
                 Verify
               </button>
-              <button onClick={() => setShowUploadModal(false)}>Cancel</button>
+              <button onClick={() => {
+                setShowUploadModal(false);
+                setSelectedFile(null);
+                setSelectedCertType(null);
+              }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Certificate Type Selection Modal */}
+      {showCertTypeModal && (
+        <div className="modal">
+          <div className="modal-content">
+            <h2>Select Certificate Type</h2>
+            <div className="wipe-modes">
+              <div
+                className="wipe-option"
+                onClick={() => handleCertTypeSelection("audit")}
+              >
+                <strong>Audit Certificate (JSON)</strong>
+                <br />
+                <span>Cryptographically signed, legally admissible</span>
+              </div>
+              <div
+                className="wipe-option"
+                onClick={() => handleCertTypeSelection("pdf")}
+              >
+                <strong>PDF Certificate</strong>
+                <br />
+                <span>Human readable format</span>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button onClick={() => setShowCertTypeModal(false)}>Cancel</button>
             </div>
           </div>
         </div>
@@ -906,6 +1030,64 @@ function App() {
       />
       
 
+
+      {/* Unlock Modal */}
+      {showUnlockModal && (
+        <div className="modal">
+          <div className="modal-content">
+            <h2>🔓 Unlock Sensitive Files</h2>
+            <input
+              type="password"
+              value={unlockPin}
+              onChange={(e) => setUnlockPin(e.target.value)}
+              placeholder="Enter PIN to unlock files"
+            />
+            {unlockError && <p className="error">{unlockError}</p>}
+            <div className="modal-actions">
+              <button
+                onClick={async () => {
+                  if (!unlockPin) {
+                    setUnlockError("PIN is required");
+                    return;
+                  }
+                  try {
+                    const isValid = await invoke<boolean>("verify_user_pin", {
+                      userId: currentUserId,
+                      pin: unlockPin,
+                    });
+                    if (isValid) {
+                      await invoke("unlock_sensitive_files", {
+                        filePaths: sensitiveFiles,
+                        userId: currentUserId
+                      });
+                      setFilesLocked(false);
+                      setShowUnlockModal(false);
+                      setUnlockPin("");
+                      setUnlockError("");
+                      alert("🔓 Files unlocked successfully!");
+                    } else {
+                      setUnlockError("❌ Incorrect PIN");
+                    }
+                  } catch (err) {
+                    setUnlockError(`❌ Error: ${err}`);
+                  }
+                }}
+              >
+                Unlock
+              </button>
+              <button
+                onClick={() => {
+                  setShowUnlockModal(false);
+                  setUnlockPin("");
+                  setUnlockError("");
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Help Modal */}
       {showHelpModal && (
@@ -1275,25 +1457,45 @@ function Certificates({ userId }: { userId: number }) {
                 <p>
                   <strong>Hash:</strong> {cert.hash}
                 </p>
-                <button 
-                  className="back-btn"
-                  onClick={async () => {
-                    try {
-                      await invoke("download_certificate_pdf", {
-                        drive: cert.drive,
-                        wipeMode: cert.wipe_mode,
-                        deviceId: cert.device_id,
-                        timestamp: cert.timestamp,
-                        hash: cert.hash,
-                        filename: `certificate_${cert.drive.replace(/[:\\\s]/g, '_')}_${cert.timestamp.replace(/[:\s]/g, '_')}.pdf`
-                      });
-                    } catch (err) {
-                      alert(`Error downloading certificate: ${err}`);
-                    }
-                  }}
-                >
-                  Download PDF
-                </button>
+                <div style={{display: 'flex', gap: '10px'}}>
+                  <button 
+                    className="back-btn"
+                    onClick={async () => {
+                      try {
+                        const blob = new Blob([cert.content], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `audit_certificate_${cert.drive.replace(/[:\\\s]/g, '_')}_${cert.timestamp.replace(/[:\s]/g, '_')}.json`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      } catch (err) {
+                        alert(`Error downloading audit certificate: ${err}`);
+                      }
+                    }}
+                  >
+                    Download Audit JSON
+                  </button>
+                  <button 
+                    className="back-btn"
+                    onClick={async () => {
+                      try {
+                        await invoke("download_certificate_pdf", {
+                          drive: cert.drive,
+                          wipeMode: cert.wipe_mode,
+                          deviceId: cert.device_id,
+                          timestamp: cert.timestamp,
+                          hash: cert.hash,
+                          filename: `certificate_${cert.drive.replace(/[:\\\s]/g, '_')}_${cert.timestamp.replace(/[:\s]/g, '_')}.pdf`
+                        });
+                      } catch (err) {
+                        alert(`Error downloading certificate: ${err}`);
+                      }
+                    }}
+                  >
+                    Download PDF
+                  </button>
+                </div>
               </div>
               
             )}

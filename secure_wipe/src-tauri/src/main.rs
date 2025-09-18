@@ -22,6 +22,8 @@ mod bootable;
 mod iso_builder;
 mod pxe_server;
 mod geofence;
+mod open_audit;
+mod android_wipe;
 
 
 
@@ -903,18 +905,39 @@ async fn unlock_sensitive_files(
     _user_id: i32,
 ) -> Result<(), String> {
     for file_path in &file_paths {
-        let _path = std::path::Path::new(file_path);
+        let path = std::path::Path::new(file_path);
         
         if OS == "windows" {
-            // Windows: Restore full control permissions
-            Command::new("icacls")
-                .args(&[file_path, "/grant", "Everyone:F"])
-                .status()
-                .map_err(|e| format!("Failed to unlock file {}: {}", file_path, e))?;
+            if path.exists() {
+                // Remove deny permissions first
+                let username = std::env::var("USERNAME").unwrap_or_default();
+                let _ = Command::new("icacls")
+                    .args(&[file_path, "/remove:d", &username, "/T"])
+                    .output();
+                let _ = Command::new("icacls")
+                    .args(&[file_path, "/remove:d", "Everyone", "/T"])
+                    .output();
+                let _ = Command::new("icacls")
+                    .args(&[file_path, "/remove:d", "Administrators", "/T"])
+                    .output();
+                
+                // Grant full control
+                let _ = Command::new("icacls")
+                    .args(&[file_path, "/grant", &format!("{}:F", username), "/T"])
+                    .output();
+                let _ = Command::new("icacls")
+                    .args(&[file_path, "/grant", "Everyone:F", "/T"])
+                    .output();
+                
+                // Remove attributes
+                let _ = Command::new("attrib")
+                    .args(&["-R", "-S", "-H", file_path])
+                    .output();
+            }
         } else {
             // Linux/Unix: Restore read/write permissions
             Command::new("chmod")
-                .args(&["644", file_path])
+                .args(&["-R", "755", file_path])
                 .status()
                 .map_err(|e| format!("Failed to unlock file {}: {}", file_path, e))?;
         }
@@ -1072,6 +1095,13 @@ async fn main() {
     geofence::lock_all_system_files,
     select_file,
     select_folder,
+    open_audit::generate_audit_certificate,
+    open_audit::verify_audit_certificate,
+    android_wipe::secure_wipe_android,
+    android_wipe::check_root_access,
+    android_wipe::root_secure_wipe,
+    android_wipe::factory_reset_android,
+    android_wipe::clear_app_data,
 
 
 ])
