@@ -24,6 +24,8 @@ mod pxe_server;
 mod geofence;
 mod open_audit;
 mod android_wipe;
+mod drive_filter;
+mod ssd;
 
 
 
@@ -61,20 +63,7 @@ struct Claims {
     email: String,
 }
 
-// User registration data
-#[derive(Debug, Deserialize)]
-struct RegisterData {
-    email: String,
-    password: String,
-    username: String,
-}
 
-// User login data
-#[derive(Debug, Deserialize)]
-struct LoginData {
-    email: String,
-    password: String,
-}
 
 // Response types
 #[derive(Debug, Serialize)]
@@ -661,14 +650,6 @@ async fn verify_certificate(
 
 
 #[derive(Debug, Serialize)]
-struct FileEntry {
-    name: String,
-    size: u64,
-}
-
-
-
-#[derive(Debug, Serialize)]
 struct Certificate {
     id: i32,
     user_id: Option<i32>,  // <-- changed
@@ -1078,14 +1059,17 @@ async fn main() {
     change_user_password,
     change_user_pin,
     refresh_token,
-    bootable::create_bootable_usb,
     bootable::list_usb_drives,
-    iso_builder::create_iso,
+    bootable::create_bootable_usb,
+    bootable::create_iso_from_usb,
+    iso_builder::create_complete_iso,
     iso_builder::build_bootable_environment,
     pxe_server::start_pxe_server,
     pxe_server::stop_pxe_server,
     pxe_server::get_client_statuses,
     pxe_server::validate_pxe_config,
+    pxe_server::setup_pxe_prerequisites,
+    pxe_server::get_network_interfaces,
     geofence::scan_wifi_networks,
     geofence::setup_geofence,
     geofence::start_geofence_monitoring,
@@ -1102,6 +1086,13 @@ async fn main() {
     android_wipe::root_secure_wipe,
     android_wipe::factory_reset_android,
     android_wipe::clear_app_data,
+    drive_filter::get_available_drives,
+    ssd::replace_random_byte,
+    ssd::overwrite_hdd_data,
+    ssd::check_ssd_support,
+    ssd::clear_drive_data,
+    ssd::hybrid_crypto_erase,
+    ssd::detect_drive_info,
 
 
 ])

@@ -1,12 +1,58 @@
 use tauri::command;
 use std::process::{Command, Stdio};
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::{Write, Seek, SeekFrom};
 use rand::Rng;
-use std::io::prelude::*;
+
+fn drive_letter_to_volume_path(drive_letter: &str) -> Result<String, String> {
+    Ok(format!("\\\\.\\{}:", drive_letter.to_uppercase()))
+}
+
+fn is_system_drive(drive_letter: &str) -> bool {
+    if cfg!(target_os = "windows") {
+        let system_drive = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".to_string());
+        let system_letter = system_drive.chars().next().unwrap_or('C');
+        drive_letter.to_uppercase().chars().next().unwrap_or('X') == system_letter
+    } else {
+        false
+    }
+}
 
 fn is_nvme_device(device_path: &str) -> bool {
     device_path.to_lowercase().contains("nvme")
+}
+
+fn is_sata_ssd(device_path: &str) -> bool {
+    // Check if device is SSD but not NVMe (i.e., SATA SSD)
+    if cfg!(target_os = "windows") {
+        let drive_letter = device_path.chars().nth(4).unwrap_or('C');
+        let output = Command::new("powershell")
+            .args(&["-Command", &format!("Get-PhysicalDisk | Where-Object {{$_.DeviceId -like '*{}*'}} | Select-Object -ExpandProperty MediaType", drive_letter)])
+            .output();
+        
+        if let Ok(output) = output {
+            let media_type = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
+            return media_type.contains("ssd") && !media_type.contains("nvme");
+        }
+    } else {
+        // Linux: Check if device is SSD via /sys/block
+        let device_name = device_path.trim_start_matches("/dev/");
+        let rotational_path = format!("/sys/block/{}/queue/rotational", device_name);
+        if let Ok(content) = std::fs::read_to_string(&rotational_path) {
+            return content.trim() == "0"; // 0 = SSD, 1 = HDD
+        }
+    }
+    false
+}
+
+fn detect_drive_type(device_path: &str) -> String {
+    if is_nvme_device(device_path) {
+        "NVMe SSD".to_string()
+    } else if is_sata_ssd(device_path) {
+        "SATA SSD".to_string()
+    } else {
+        "HDD".to_string()
+    }
 }
 
 fn check_nvme_cli_available() -> bool {
@@ -20,29 +66,175 @@ fn check_nvme_cli_available() -> bool {
 }
 
 #[command]
+pub async fn clear_drive_data(selected_usb: String) -> Result<String, String> {
+    // Check if trying to clear system drive
+    if selected_usb.len() == 1 && selected_usb.chars().next().unwrap().is_alphabetic() {
+        if is_system_drive(&selected_usb) {
+            return Err("Cannot clear system drive while Windows is running.".to_string());
+        }
+    }
+    
+    let drive_letter = if selected_usb.len() == 1 {
+        format!("{}:", selected_usb.to_uppercase())
+    } else {
+        selected_usb.clone()
+    };
+    
+    if cfg!(target_os = "windows") {
+        let output = Command::new("cmd")
+            .args(&["/c", &format!("del /f /s /q {}\\*.*", drive_letter)])
+            .output()
+            .map_err(|e| format!("Failed to delete files: {}", e))?;
+        
+        if output.status.success() {
+            Ok(format!("Regular deletion completed on drive {}", drive_letter))
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!("Deletion failed: {}", stderr))
+        }
+    } else {
+        Err("Clear operation not implemented for this OS".to_string())
+    }
+}
+
+#[command]
 pub async fn replace_random_byte(method: String, selected_usb: String) -> Result<String, String> {
-    if is_nvme_device(&selected_usb) {
+    // Check if trying to wipe system drive
+    if selected_usb.len() == 1 && selected_usb.chars().next().unwrap().is_alphabetic() {
+        if is_system_drive(&selected_usb) {
+            return Err("Cannot wipe system drive while Windows is running. Boot from external media to wipe system drive.".to_string());
+        }
+    }
+    
+    // Map frontend method names to backend method names
+    let backend_method = match method.as_str() {
+        "Single Pass" => "single",
+        "3 Pass DDOD" => "3",
+        "7 Pass" => "7",
+        "Gutmann" => "gutmann",
+        _ => return Err(format!("Unknown wipe method: {}", method)),
+    };
+    
+    // Convert drive letter to volume path if needed
+    let drive_path = if selected_usb.len() == 1 && selected_usb.chars().next().unwrap().is_alphabetic() {
+        drive_letter_to_volume_path(&selected_usb)?
+    } else {
+        selected_usb.clone()
+    };
+    
+    if is_nvme_device(&drive_path) {
         if cfg!(target_os = "windows") && !check_nvme_cli_available() {
             return Err("NVMe CLI not found. Install NVMe CLI tools for Windows.".to_string());
         }
         
         let output = Command::new("nvme")
-            .args(&["format", &selected_usb, "-s", "2"])
+            .args(&["format", &drive_path, "-s", "2"])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
             .map_err(|e| format!("Failed to execute nvme command: {}", e))?;
 
         if output.status.success() {
-            Ok(format!("NVMe crypto-erase completed on: {}", selected_usb))
+            Ok(format!("NVMe crypto-erase completed on: {}", drive_path))
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
             Err(format!("NVMe format failed: {}. Administrator privileges may be required.", stderr))
         }
     } else {
         // HDD overwrite
-        overwrite_hdd_data(method, selected_usb).await
+        overwrite_hdd_data(backend_method.to_string(), drive_path).await
     }
+}
+
+#[command]
+pub async fn hybrid_crypto_erase(selected_usb: String) -> Result<String, String> {
+    // Check if trying to erase system drive
+    if selected_usb.len() == 1 && selected_usb.chars().next().unwrap().is_alphabetic() {
+        if is_system_drive(&selected_usb) {
+            return Err("Cannot erase system drive while Windows is running. Boot from external media to erase system drive.".to_string());
+        }
+    }
+    
+    // Convert drive letter to volume path if needed
+    let drive_path = if selected_usb.len() == 1 && selected_usb.chars().next().unwrap().is_alphabetic() {
+        drive_letter_to_volume_path(&selected_usb)?
+    } else {
+        selected_usb.clone()
+    };
+    
+    let drive_type = detect_drive_type(&drive_path);
+    
+    match drive_type.as_str() {
+        "NVMe SSD" => {
+            // NVMe Crypto-Erase
+            if cfg!(target_os = "windows") && !check_nvme_cli_available() {
+                return Err("NVMe CLI not found. Install NVMe CLI tools for Windows.".to_string());
+            }
+            
+            let output = Command::new("nvme")
+                .args(&["format", &drive_path, "--ses=1", "--force"])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .output()
+                .map_err(|e| format!("Failed to execute nvme command: {}", e))?;
+
+            if output.status.success() {
+                Ok(format!("✅ NVMe crypto-erase completed instantly on: {} ({})", drive_path, drive_type))
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                Err(format!("NVMe crypto-erase failed: {}. Administrator privileges may be required.", stderr))
+            }
+        },
+        "SATA SSD" => {
+            // SATA Secure Erase
+            if cfg!(target_os = "linux") {
+                // Linux: Use hdparm secure erase
+                let device_name = drive_path.trim_start_matches("/dev/");
+                
+                // Set security password
+                let set_pass = Command::new("hdparm")
+                    .args(&["--user-master", "u", "--security-set-pass", "p", &format!("/dev/{}", device_name)])
+                    .output()
+                    .map_err(|e| format!("Failed to set security password: {}", e))?;
+                
+                if !set_pass.status.success() {
+                    return Err("Failed to set security password for SATA secure erase".to_string());
+                }
+                
+                // Execute secure erase
+                let erase_output = Command::new("hdparm")
+                    .args(&["--user-master", "u", "--security-erase", "p", &format!("/dev/{}", device_name)])
+                    .output()
+                    .map_err(|e| format!("Failed to execute secure erase: {}", e))?;
+                
+                if erase_output.status.success() {
+                    Ok(format!("✅ SATA secure erase completed on: {} ({})", drive_path, drive_type))
+                } else {
+                    let stderr = String::from_utf8_lossy(&erase_output.stderr);
+                    Err(format!("SATA secure erase failed: {}", stderr))
+                }
+            } else {
+                // Windows: Fall back to random byte overwrite for SATA SSDs
+                Ok(format!("⚠️ SATA secure erase not available on Windows. Use Random Byte method for SATA SSDs. Drive: {} ({})", drive_path, drive_type))
+            }
+        },
+        _ => {
+            // HDD: Recommend random byte overwrite
+            Err(format!("Crypto-erase not applicable for HDDs. Use Random Byte method for secure overwriting. Drive: {} ({})", drive_path, drive_type))
+        }
+    }
+}
+
+#[command]
+pub async fn detect_drive_info(selected_usb: String) -> Result<String, String> {
+    let drive_path = if selected_usb.len() == 1 && selected_usb.chars().next().unwrap().is_alphabetic() {
+        drive_letter_to_volume_path(&selected_usb)?
+    } else {
+        selected_usb.clone()
+    };
+    
+    let drive_type = detect_drive_type(&drive_path);
+    Ok(drive_type)
 }
 
 #[command]
@@ -60,51 +252,22 @@ pub async fn check_ssd_support() -> Result<String, String> {
 
 fn get_drive_size(drive_path: &str) -> Result<u64, String> {
     if cfg!(target_os = "windows") {
-        let output = Command::new("wmic")
-            .args(&["diskdrive", "where", &format!("DeviceID='{}''", drive_path), "get", "Size", "/value"])
+        let drive_letter = drive_path.chars().nth(4).unwrap_or('C');
+        let output = Command::new("powershell")
+            .args(&["-Command", &format!("Get-PartitionSupportedSize -DriveLetter {} | Select-Object -ExpandProperty SizeMax", drive_letter)])
             .output()
             .map_err(|e| format!("Failed to get drive size: {}", e))?;
         
-        let output_str = String::from_utf8_lossy(&output.stdout);
-        for line in output_str.lines() {
-            if line.starts_with("Size=") {
-                return line[5..].parse::<u64>()
-                    .map_err(|_| "Failed to parse drive size".to_string());
-            }
-        }
-        Err("Could not determine drive size".to_string())
+        let output_string = String::from_utf8_lossy(&output.stdout);
+        let output_str = output_string.trim();
+        output_str.parse::<u64>()
+            .map_err(|_| "Failed to parse drive size".to_string())
     } else {
         Err("Drive size detection not implemented for this OS".to_string())
     }
 }
 
-fn dismount_drive(drive_letter: &str) -> Result<(), String> {
-    if cfg!(target_os = "windows") {
-        Command::new("mountvol")
-            .args(&[drive_letter, "/d"])
-            .output()
-            .map_err(|e| format!("Failed to dismount {}: {}", drive_letter, e))?;
-    }
-    Ok(())
-}
-
 fn overwrite_hdd_passes(drive_path: &str, passes: u32) -> Result<String, String> {
-    // Try to dismount associated volumes first
-    if cfg!(target_os = "windows") && drive_path.contains("PhysicalDrive") {
-        let _ = Command::new("diskpart")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .and_then(|mut child| {
-                if let Some(stdin) = child.stdin.as_mut() {
-                    let _ = writeln!(stdin, "select disk {}", drive_path.chars().last().unwrap_or('0'));
-                    let _ = writeln!(stdin, "offline disk");
-                    let _ = writeln!(stdin, "exit");
-                }
-                child.wait()
-            });
-    }
     
     let size = get_drive_size(drive_path)?;
     let chunk_size = 1024 * 1024; // 1MB chunks
@@ -142,7 +305,7 @@ fn overwrite_hdd_passes(drive_path: &str, passes: u32) -> Result<String, String>
             .map_err(|e| format!("Sync failed on pass {}: {}", pass, e))?;
     }
     
-    Ok(format!("HDD overwrite completed with {} passes", passes))
+    Ok(format!("Partition overwrite completed with {} passes on {}", passes, drive_path))
 }
 
 #[command]

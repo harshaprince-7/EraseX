@@ -1,11 +1,9 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Sha256, Digest};
-use rsa::{RsaPrivateKey, RsaPublicKey, Pkcs1v15Sign};
-use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey};
+use rsa::{RsaPrivateKey, RsaPublicKey};
+use rsa::pkcs8::EncodePublicKey;
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
-use std::collections::HashMap;
-use sha2::digest::const_oid::AssociatedOid;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OpenAuditCertificate {
@@ -125,7 +123,7 @@ pub fn generate_open_audit_certificate(
 }
 
 fn sign_content(content: &str, private_key: &RsaPrivateKey) -> Result<String, String> {
-    use rsa::signature::{Keypair, RandomizedSigner, SignatureEncoding};
+    use rsa::signature::{RandomizedSigner, SignatureEncoding};
     use rsa::pkcs1v15::SigningKey;
     use sha2::Sha256;
     

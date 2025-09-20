@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { User, MoreVertical, Sun, Moon, Shield, Lock } from "lucide-react";
 import "./App.css";
+import "./error-banner.css";
 import Register from "./Register";
 import Login from "./Login";
 import BootableModal from "./BootableModal";
@@ -39,7 +40,7 @@ function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
-  const [generatedCertificate, setGeneratedCertificate] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string>("");
   const [selectedWipe, setSelectedWipe] = useState<string | null>(null);
   const [selectedRandomMethod, setSelectedRandomMethod] = useState<
     string | null
@@ -83,6 +84,32 @@ function App() {
   const [showUnlockModal, setShowUnlockModal] = useState(false);
   const [unlockPin, setUnlockPin] = useState("");
   const [unlockError, setUnlockError] = useState("");
+  const [isSsdDetected, setIsSsdDetected] = useState(false);
+
+  // Enhanced drive type detection
+  const [driveTypes, setDriveTypes] = useState<{[key: string]: string}>({});
+  
+  // Check if any selected drive is SSD
+  const isSelectedDriveSsd = () => {
+    const selectedDrives = drives.filter(d => d.selected);
+    if (selectedDrives.length === 0) return false;
+    
+    return selectedDrives.some(drive => {
+      const driveType = driveTypes[drive.name] || "";
+      return driveType.includes("SSD") || driveType.includes("NVMe");
+    });
+  };
+  
+  // Get drive type display text
+  const getDriveTypeDisplay = (driveName: string) => {
+    const driveType = driveTypes[driveName];
+    if (!driveType) return "";
+    
+    if (driveType.includes("NVMe")) return " (NVMe SSD)";
+    if (driveType.includes("SATA SSD")) return " (SATA SSD)";
+    if (driveType.includes("HDD")) return " (HDD)";
+    return "";
+  };
 
 
   const toggleProfile = () => setShowProfile(!showProfile);
@@ -174,8 +201,30 @@ function App() {
     if (authState === "authenticated") {
       const fetchDrives = async () => {
         try {
-          const driveList = await invoke<string[]>("list_drives");
+          const driveList = await invoke<string[]>("get_available_drives");
           setDrives(driveList.map((d: string) => ({ name: d, selected: false })));
+          
+          // Detect drive types for each drive
+          const types: {[key: string]: string} = {};
+          for (const drive of driveList) {
+            try {
+              const driveType = await invoke<string>("detect_drive_info", {
+                selectedUsb: drive.replace(":", "")
+              });
+              types[drive] = driveType;
+            } catch (err) {
+              types[drive] = "Unknown";
+            }
+          }
+          setDriveTypes(types);
+          
+          // Check for SSD support
+          try {
+            const ssdSupport = await invoke<string>("check_ssd_support");
+            setIsSsdDetected(ssdSupport.includes("available") || ssdSupport.includes("supported"));
+          } catch (err) {
+            setIsSsdDetected(false);
+          }
         } catch (err) {
           console.error("Error fetching drives:", err);
         }
@@ -215,6 +264,10 @@ function App() {
     const newDrives = [...drives];
     newDrives[index].selected = !newDrives[index].selected;
     setDrives(newDrives);
+    
+    // Reset wipe method when drive selection changes
+    setSelectedWipe(null);
+    setSelectedRandomMethod(null);
   };
 
   const handleDelete = () => {
@@ -265,16 +318,33 @@ function App() {
       // Reset attempts on successful PIN
       setPinAttempts(0);
 
-      // Perform Android secure wipe if available
-      try {
-        const wipeResult = await invoke("secure_wipe_android", {
-          filePaths: selected,
-          wipeMode: selectedWipe === "Purge" ? selectedRandomMethod : selectedWipe,
-        });
-        alert(`✅ ${wipeResult}`);
-      } catch (wipeErr) {
-        // Silently fall back to certificate-only mode on non-Android platforms
-        console.log(`Platform-specific wipe not available: ${wipeErr}`);
+      // Perform wipe operation on selected drives
+      for (const drive of selected) {
+        try {
+          let wipeResult;
+          if (selectedWipe === "Clear") {
+            // Regular deletion (recoverable)
+            wipeResult = await invoke("clear_drive_data", {
+              selectedUsb: drive.replace(":", ""), // Remove colon from drive letter
+            });
+          } else if (selectedWipe === "Destroy") {
+            // Hybrid crypto-erase (automatically detects drive type)
+            wipeResult = await invoke("hybrid_crypto_erase", {
+              selectedUsb: drive.replace(":", ""), // Remove colon from drive letter
+            });
+          } else {
+            // Secure wipe (random byte overwrite)
+            wipeResult = await invoke("replace_random_byte", {
+              method: selectedWipe === "Purge" ? selectedRandomMethod : selectedWipe,
+              selectedUsb: drive.replace(":", ""), // Remove colon from drive letter
+            });
+          }
+          setErrorMessage(`✅ ${wipeResult}`);
+        } catch (wipeErr) {
+          const sanitizedError = String(wipeErr).replace(/<[^>]*>/g, '');
+          setErrorMessage(`❌ Operation failed for ${drive}: ${sanitizedError}`);
+          return;
+        }
       }
 
       // Generate open audit certificate
@@ -305,7 +375,7 @@ function App() {
       a.click();
       URL.revokeObjectURL(url);
 
-      alert(`✅ Wiping completed!`);
+      setErrorMessage(`✅ Wiping completed!`);
       setShowConfirm(false);
       setPin("");
       setError("");
@@ -477,6 +547,14 @@ function App() {
         </div>
       </aside>
 
+      {/* Error Message Display */}
+      {errorMessage && (
+        <div className={`error-banner ${errorMessage.includes('✅') ? 'success' : 'error'}`}>
+          <span>{errorMessage}</span>
+          <button onClick={() => setErrorMessage('')}>×</button>
+        </div>
+      )}
+
       {/* Main Content */}
       <section className="content">
         {currentPage === "home" && (
@@ -491,7 +569,7 @@ function App() {
                   }`}
                   onClick={() => toggleDrive(index)}
                 >
-                  {drive.name}
+                  {drive.name}{getDriveTypeDisplay(drive.name)}
                 </div>
               ))}
             </div>
@@ -501,38 +579,49 @@ function App() {
               <div
                 className={`wipe-option ${
                   selectedWipe === "Clear" ? "selected" : ""
-                }`}
-                onClick={() => setSelectedWipe("Clear")}
+                } ${isSelectedDriveSsd() ? "disabled" : ""}`}
+                onClick={() => !isSelectedDriveSsd() && setSelectedWipe("Clear")}
               >
                 <strong>Clear</strong>
                 <br />
-                <span>Quick removal (Recoverable)</span>
+                <span>
+                  {isSelectedDriveSsd() 
+                    ? "Not available for SSD" 
+                    : "Quick removal (Recoverable)"}
+                </span>
               </div>
               <div
                 className={`wipe-option ${
                   selectedWipe === "Purge" ? "selected" : ""
-                }`}
+                } ${isSelectedDriveSsd() ? "disabled" : ""}`}
                 onClick={() => {
-                  setSelectedWipe("Purge");
-                  setShowRandomWipeModal(true);
+                  if (!isSelectedDriveSsd()) {
+                    setSelectedWipe("Purge");
+                    setShowRandomWipeModal(true);
+                  }
                 }}
               >
                 <strong>Random Byte</strong>
                 <br />
                 <span>
-                  Secure Wipe (hard to recover)
-                  {selectedRandomMethod ? ` — ${selectedRandomMethod}` : ""}
+                  {isSelectedDriveSsd() 
+                    ? "Not available for SSD" 
+                    : `Secure Wipe (hard to recover)${selectedRandomMethod ? ` — ${selectedRandomMethod}` : ""}`}
                 </span>
               </div>
               <div
                 className={`wipe-option ${
                   selectedWipe === "Destroy" ? "selected" : ""
-                }`}
-                onClick={() => setSelectedWipe("Destroy")}
+                } ${!isSelectedDriveSsd() ? "disabled" : ""}`}
+                onClick={() => isSelectedDriveSsd() && setSelectedWipe("Destroy")}
               >
                 <strong>Destroy</strong>
                 <br />
-                <span>Cryptographic erase (irrecoverable)</span>
+                <span>
+                  {isSelectedDriveSsd() 
+                    ? "Hybrid crypto-erase (NVMe instant, SATA secure erase)" 
+                    : "SSD drive required"}
+                </span>
               </div>
             </div>
 
@@ -953,12 +1042,13 @@ function App() {
                     }
 
                     if (isValid) {
-                      alert("✅ Certificate is valid and untampered!");
+                      setErrorMessage("✅ Certificate is valid and untampered!");
                     } else {
-                      alert("❌ Certificate verification failed.");
+                      setErrorMessage("❌ Certificate verification failed.");
                     }
                   } catch (err) {
-                    alert(`⚠️ Error verifying certificate: ${err}`);
+                    const sanitizedError = String(err).replace(/<[^>]*>/g, '');
+                    setErrorMessage(`⚠️ Error verifying certificate: ${sanitizedError}`);
                   }
 
                   setShowUploadModal(false);
@@ -1155,99 +1245,7 @@ function App() {
 }
 
 // Dashboard Component
-// Bootable Page Component
-function BootablePage() {
-  const [usbDrives, setUsbDrives] = useState<string[]>([]);
-  const [selectedUsb, setSelectedUsb] = useState<string>("");
-  const [isCreating, setIsCreating] = useState(false);
-
-  useEffect(() => {
-    loadUsbDrives();
-  }, []);
-
-  const loadUsbDrives = async () => {
-    try {
-      const drives = await invoke<string[]>("list_usb_drives");
-      setUsbDrives(drives);
-    } catch (err) {
-      console.error("Failed to load USB drives:", err);
-    }
-  };
-
-  const createBootableUsb = async () => {
-    if (!selectedUsb) {
-      alert("Please select a USB drive");
-      return;
-    }
-
-    setIsCreating(true);
-    try {
-      await invoke("build_bootable_environment");
-      await invoke("create_iso");
-      await invoke("create_bootable_usb", {
-        usbDrive: selectedUsb,
-        isoPath: "secure_wipe_boot.iso"
-      });
-      
-      alert("✅ Bootable USB created successfully!\n\nUsage:\n1. Insert USB into target computer\n2. Boot from USB (F12 during startup)\n3. Run secure wipe without OS");
-    } catch (err) {
-      alert(`❌ Error: ${err}`);
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
-  return (
-    <div className="card">
-      <h2>💿 Bootable USB/ISO Creator</h2>
-      
-      <div className="bootable-info">
-        <h3>Create Secure Wipe Bootable Media</h3>
-        <p>Generate a bootable USB drive for OS-independent secure wiping.</p>
-      </div>
-
-      <div className="drive-list">
-        <label>Select USB Drive:</label>
-        <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
-          <select 
-            className="drive-option"
-            value={selectedUsb} 
-            onChange={(e) => setSelectedUsb(e.target.value)}
-            disabled={isCreating}
-            style={{flex: 1}}
-          >
-            <option value="">Choose USB Drive...</option>
-            {usbDrives.map((drive, index) => (
-              <option key={index} value={drive}>
-                {drive}
-              </option>
-            ))}
-          </select>
-          
-          <button className="back-btn" onClick={loadUsbDrives} disabled={isCreating}>
-            🔄 Refresh
-          </button>
-        </div>
-      </div>
-
-      <button 
-        className="proceed-btn"
-        onClick={createBootableUsb} 
-        disabled={isCreating || !selectedUsb}
-      >
-        {isCreating ? "Creating..." : "🚀 Create Bootable USB"}
-      </button>
-
-      <div className="wipe-modes">
-        <div className="wipe-option">
-          <strong>🔒 Security Benefits</strong>
-          <br />
-          <span>OS-independent • Complete hardware access • No interference • Forensic-grade</span>
-        </div>
-      </div>
-    </div>
-  );
-}
+import BootablePage from "./BootablePage";
 
 function Dashboard({
   setCurrentPage,
