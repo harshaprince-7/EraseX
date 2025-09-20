@@ -1081,6 +1081,7 @@ async fn main() {
     select_folder,
     open_audit::generate_audit_certificate,
     open_audit::verify_audit_certificate,
+    open_audit::get_audit_certificate_json,
     android_wipe::secure_wipe_android,
     android_wipe::check_root_access,
     android_wipe::root_secure_wipe,
@@ -1093,6 +1094,7 @@ async fn main() {
     ssd::clear_drive_data,
     ssd::hybrid_crypto_erase,
     ssd::detect_drive_info,
+    ssd::overwrite_usb_files_with_progress,
 
 
 ])
