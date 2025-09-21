@@ -354,12 +354,8 @@ pub async fn unlock_with_pin(
         .await
         .map_err(|_| "User not found")?;
     
-    if let Some(stored_pin) = record.confirmation_pin {
-        if stored_pin.trim() != pin.trim() {
-            return Err("Invalid PIN".to_string());
-        }
-    } else {
-        return Err("No PIN set".to_string());
+    if record.confirmation_pin.trim() != pin.trim() {
+        return Err("Invalid PIN".to_string());
     }
     
     // Unlock files using the same logic as main unlock function

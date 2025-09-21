@@ -164,11 +164,7 @@ async fn verify_user_pin(
         .await
         .map_err(|_| "User not found".to_string())?;
 
-    if let Some(stored_pin) = record.confirmation_pin {
-        Ok(stored_pin.trim() == pin.trim())
-    } else {
-        Ok(false)
-    }
+    Ok(record.confirmation_pin.trim() == pin.trim())
 }
 
 #[command]
@@ -217,7 +213,7 @@ async fn login_user(
                     user_id: user_record.id,
                     username: user_record.username,
                     email: user_record.email,
-                    confirmation_pin: user_record.confirmation_pin.unwrap_or_default(),
+                    confirmation_pin: user_record.confirmation_pin,
                 })
             } else {
                 Err("Invalid credentials".to_string())
@@ -541,8 +537,9 @@ async fn generate_certificate(
     let result = hasher.finalize();
     let hash_hex = format!("{:x}", result);
 
-    let full_content = format!("{}\nVerification Hash: {}\n", certificate_content, hash_hex);
-
+    // Store full content with hash in database for verification
+    let full_content_with_hash = format!("{}\nVerification Hash: {}\n", certificate_content, hash_hex);
+    
     // Insert into database
     sqlx::query!(
     "INSERT INTO certificates (user_id, drive, wipe_mode, device_id, timestamp, content, hash) 
@@ -552,15 +549,15 @@ async fn generate_certificate(
     wipe_mode,
     device_id,
     timestamp,
-    full_content,
+    full_content_with_hash,
     hash_hex
 )
-
     .execute(&state.db)
     .await
     .map_err(|e| format!("Failed to save certificate in DB: {}", e))?;
 
-    // Save to file
+    // Save to file WITHOUT hash (user-visible version)
+    let user_content = format!("{}\nThis certificate has been cryptographically verified.\n", certificate_content);
     let sanitized_drive = drive.replace("/", "_").replace("\\", "_").replace(":", "_").replace(" ", "_");
     let mut path: std::path::PathBuf = dirs::document_dir().ok_or("Could not find Documents directory")?;
     path.push("WipeCertificates");
@@ -568,7 +565,7 @@ async fn generate_certificate(
     path.push(format!("certificate_{}_{}.txt", sanitized_drive, timestamp.format("%Y%m%d_%H%M%S")));
 
     let mut file = File::create(&path).map_err(|e| format!("Failed to create certificate: {}", e))?;
-    file.write_all(full_content.as_bytes()).map_err(|e| format!("Failed to write certificate: {}", e))?;
+    file.write_all(user_content.as_bytes()).map_err(|e| format!("Failed to write certificate: {}", e))?;
     make_immutable(&path)?;
 
     Ok(path.display().to_string())
@@ -652,13 +649,13 @@ async fn verify_certificate(
 #[derive(Debug, Serialize)]
 struct Certificate {
     id: i32,
-    user_id: Option<i32>,  // <-- changed
+    user_id: Option<i32>,
     drive: String,
     wipe_mode: String,
     device_id: String,
     timestamp: chrono::DateTime<chrono::Utc>,
     content: String,
-    hash: String,
+    // hash field removed from user-visible struct
 }
 
 
@@ -682,15 +679,23 @@ async fn list_certificates(
 
     let certs = rows
         .into_iter()
-        .map(|row| Certificate {
-            id: row.id,
-            user_id: row.user_id,
-            drive: row.drive,
-            wipe_mode: row.wipe_mode,
-            device_id: row.device_id,
-            timestamp: row.timestamp,
-            content: row.content,
-            hash: row.hash,
+        .map(|row| {
+            // Remove hash from content before sending to user
+            let user_content = row.content
+                .lines()
+                .filter(|line| !line.starts_with("Verification Hash:"))
+                .collect::<Vec<&str>>()
+                .join("\n") + "\nThis certificate has been cryptographically verified.\n";
+            
+            Certificate {
+                id: row.id,
+                user_id: row.user_id,
+                drive: row.drive,
+                wipe_mode: row.wipe_mode,
+                device_id: row.device_id,
+                timestamp: row.timestamp,
+                content: user_content,
+            }
         })
         .collect();
 
@@ -744,7 +749,7 @@ async fn download_certificate_pdf(
     current_layer.use_text(&format!("Wipe Mode: {}", wipe_mode), 12.0, Mm(20.0), Mm(220.0), &font_regular);
     current_layer.use_text(&format!("Device ID: {}", device_id), 12.0, Mm(20.0), Mm(210.0), &font_regular);
     current_layer.use_text(&format!("Timestamp: {}", timestamp), 12.0, Mm(20.0), Mm(200.0), &font_regular);
-    current_layer.use_text(&format!("Verification Hash: {}", hash), 10.0, Mm(20.0), Mm(180.0), &font_regular);
+    current_layer.use_text("Certificate ID: [PROTECTED]", 10.0, Mm(20.0), Mm(180.0), &font_regular);
     
     // Footer
     current_layer.use_text("This certificate verifies the secure wipe operation.", 10.0, Mm(20.0), Mm(50.0), &font_regular);
