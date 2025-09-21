@@ -56,14 +56,3 @@ CREATE TABLE IF NOT EXISTS audit_certificates (
     
     CONSTRAINT valid_certificate_id CHECK (certificate_id ~ '^[0-9a-f-]{36}$')
 );
-
--- Create indexes for performance
-CREATE INDEX idx_audit_certificates_user_id ON audit_certificates(user_id);
-CREATE INDEX idx_audit_certificates_certificate_id ON audit_certificates(certificate_id);
-CREATE INDEX idx_audit_certificates_device_id ON audit_certificates(device_id);
-CREATE INDEX idx_audit_certificates_operation_timestamp ON audit_certificates(operation_timestamp);
-CREATE INDEX idx_audit_certificates_compliance_standard ON audit_certificates(compliance_standard);
-
--- Create GIN index for JSON fields
-CREATE INDEX idx_audit_certificates_full_certificate ON audit_certificates USING GIN (full_certificate);
-CREATE INDEX idx_audit_certificates_compliance_attestations ON audit_certificates USING GIN (compliance_attestations);
