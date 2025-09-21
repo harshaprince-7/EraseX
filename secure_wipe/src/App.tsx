@@ -88,7 +88,7 @@ function App() {
   const [isSsdDetected, setIsSsdDetected] = useState(false);
   const [showProgressModal, setShowProgressModal] = useState(false);
   const [progressMinimized, setProgressMinimized] = useState(false);
-  const [wipeProgress, setWipeProgress] = useState({ pass: 1, totalPasses: 1, progress: 0, bytesWritten: 0, totalBytes: 0 });
+  const [wipeProgress, setWipeProgress] = useState({ pass: 1, totalPasses: 7, progress: 0, bytesWritten: 0, totalBytes: 1 });
 
   // Enhanced drive type detection
   const [driveTypes, setDriveTypes] = useState<{[key: string]: string}>({});
@@ -239,11 +239,27 @@ function App() {
       
       // Listen for wipe progress events
       const unlisten = listen('wipe-progress', (event: any) => {
-        setWipeProgress(event.payload);
+        console.log('Progress event received:', event.payload);
+        const payload = event.payload;
+        console.log('Setting progress:', payload);
+        setWipeProgress({
+          pass: payload.pass || 1,
+          totalPasses: payload.total_passes || 7,
+          progress: payload.progress || 0,
+          bytesWritten: payload.bytes_written || 0,
+          totalBytes: payload.total_bytes || 1
+        });
+      });
+      
+      // Listen for wipe completion events
+      const unlistenComplete = listen('wipe-completed', () => {
+        console.log('Wipe completed event received');
+        setShowProgressModal(false);
       });
       
       return () => {
         unlisten.then(fn => fn());
+        unlistenComplete.then(fn => fn());
       };
     }
   }, [authState]);
@@ -346,7 +362,7 @@ function App() {
       
       if (isUsbDrive && (selectedWipe === "Destroy" || selectedWipe === "Purge")) {
         setShowProgressModal(true);
-        setWipeProgress({ pass: 1, totalPasses: selectedWipe === "Destroy" ? 7 : 1, progress: 0, bytesWritten: 0, totalBytes: 1 });
+        setWipeProgress({ pass: 1, totalPasses: selectedWipe === "Destroy" ? 7 : 1, progress: 0, bytesWritten: 0, totalBytes: 0 });
       }
 
       // Perform wipe operation on selected drives
@@ -1278,7 +1294,7 @@ function App() {
                   <div className="progress-info">
                     <p>Pass {wipeProgress.pass || 1} of {wipeProgress.totalPasses || 7}</p>
                     <p>{wipeProgress.progress || 0}% Complete</p>
-                    <p>{Math.round((wipeProgress.bytesWritten || 0) / (1024 * 1024))} MB / {wipeProgress.totalBytes > 1 ? Math.round(wipeProgress.totalBytes / (1024 * 1024)) : '...'} MB</p>
+                    <p>{Math.round((wipeProgress.bytesWritten || 0) / (1024 * 1024))} MB / {Math.round((wipeProgress.totalBytes || 1) / (1024 * 1024))} MB</p>
                   </div>
                   <div className="progress-bar">
                     <div 

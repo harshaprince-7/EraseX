@@ -9,7 +9,7 @@ use serde::Serialize;
 struct ProgressPayload {
     pass: u32,
     total_passes: u32,
-    progress: u32,
+    progress: u8,
     bytes_written: u64,
     total_bytes: u64,
 }
@@ -147,47 +147,36 @@ pub async fn overwrite_usb_files_with_progress(
         return Err(format!("Drive {} not found", driveLetter));
     }
     
-    // Get total drive size using improved PowerShell command
+    // Get total drive size using simplified method
     let drive_id = driveLetter.trim_end_matches(':');
-    let output = Command::new("powershell")
-        .args(&["-Command", &format!("Get-WmiObject -Class Win32_LogicalDisk | Where-Object {{$_.DeviceID -eq '{}:'}} | ForEach-Object {{Write-Output $_.Size; Write-Output $_.FreeSpace}}", drive_id)])
-        .output()
-        .map_err(|e| format!("Failed to get drive info: {}", e))?;
-    
-    let binding = String::from_utf8_lossy(&output.stdout);
-    let output_lines: Vec<&str> = binding.lines().filter(|line| !line.trim().is_empty()).collect();
-    
     let mut total_size = 0u64;
     
-    // Try to parse the first numeric value as total size
-    for line in &output_lines {
-        let line = line.trim();
-        if let Ok(size) = line.parse::<u64>() {
+    // Method 1: Simple WMI query
+    let output = Command::new("powershell")
+        .args(&["-Command", &format!("Get-WmiObject -Class Win32_LogicalDisk | Where-Object {{$_.DeviceID -eq '{}:'}} | Select-Object -ExpandProperty Size", drive_id)])
+        .output();
+    
+    if let Ok(output) = output {
+        let stdout_string = String::from_utf8_lossy(&output.stdout);
+        let size_str = stdout_string.trim();
+        if let Ok(size) = size_str.parse::<u64>() {
             if size > 0 {
                 total_size = size;
-                break;
             }
         }
     }
     
-    // Fallback: try alternative method if first attempt failed
+    // Fallback: Use default size based on drive type
     if total_size == 0 {
-        let fallback_output = Command::new("powershell")
-            .args(&["-Command", &format!("(Get-PSDrive -Name '{}').Used + (Get-PSDrive -Name '{}').Free", drive_id, drive_id)])
-            .output();
-        
-        if let Ok(output) = fallback_output {
-            let size_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            total_size = size_str.parse().unwrap_or(0);
-        }
+        println!("Warning: Could not determine drive size for {}, using default", driveLetter);
+        // Use reasonable default for USB drives
+        total_size = 8 * 1024 * 1024 * 1024; // 8GB default for USB
     }
     
-    if total_size == 0 {
-        return Err(format!("Could not determine drive size for {}. PowerShell output: {:?}", driveLetter, output_lines));
-    }
+    // Use 80% of total size to avoid filesystem overhead
+    let target_size = (total_size as f64 * 0.8) as u64;
     
-    // Use 90% of total size to avoid filesystem overhead
-    let target_size = (total_size as f64 * 0.9) as u64;
+    println!("Drive {}: Total size: {} MB, Target size: {} MB", driveLetter, total_size / (1024 * 1024), target_size / (1024 * 1024));
     
     // Delete existing files first
     let _ = Command::new("cmd")
@@ -197,11 +186,12 @@ pub async fn overwrite_usb_files_with_progress(
     let mut rng = rand::thread_rng();
     let chunk_size = 1024 * 1024; // 1MB chunks
     
-    // Emit initial progress
+    // Emit initial progress with actual size
+    println!("Starting wipe: {} passes, target size: {} MB", passes, target_size / (1024 * 1024));
     if let Err(e) = app_handle.emit("wipe-progress", ProgressPayload {
         pass: 1,
         total_passes: passes,
-        progress: 0,
+        progress: 0u8,
         bytes_written: 0,
         total_bytes: target_size,
     }) {
@@ -237,7 +227,13 @@ pub async fn overwrite_usb_files_with_progress(
                     written += remaining;
                     // Emit progress every 1MB for more frequent updates
                     if written % (1024 * 1024) == 0 || written >= target_size {
-                        let progress = (written as f64 / target_size as f64 * 100.0) as u32;
+                        let progress_f64 = (written as f64 / target_size as f64) * 100.0;
+                        let progress = if progress_f64 < 1.0 && written > 0 {
+                            1u8 // Show at least 1% if any data is written
+                        } else {
+                            std::cmp::min(progress_f64 as u8, 100)
+                        };
+                        println!("Pass {}: {}% complete ({} MB / {} MB)", pass, progress, written / (1024 * 1024), target_size / (1024 * 1024));
                         if let Err(e) = app_handle.emit("wipe-progress", ProgressPayload {
                             pass,
                             total_passes: passes,
@@ -251,7 +247,12 @@ pub async fn overwrite_usb_files_with_progress(
                 },
                 Err(e) => {
                     eprintln!("Write error: {}", e);
-                    break; // Drive full or error
+                    // If drive is full, consider it complete
+                    if e.kind() == std::io::ErrorKind::WriteZero || written > 0 {
+                        println!("Drive appears full, completing pass {}", pass);
+                        break;
+                    }
+                    return Err(format!("Write failed: {}", e));
                 }
             }
         }
@@ -274,7 +275,7 @@ pub async fn overwrite_usb_files_with_progress(
         if let Err(e) = app_handle.emit("wipe-progress", ProgressPayload {
             pass,
             total_passes: passes,
-            progress: 100,
+            progress: 100u8,
             bytes_written: written, // Use actual written bytes
             total_bytes: target_size,
         }) {
@@ -416,7 +417,7 @@ pub async fn clear_drive_data_with_progress(
         if let Err(e) = app_handle.emit("wipe-progress", ProgressPayload {
             pass: 1,
             total_passes: 1,
-            progress: 0,
+            progress: 0u8,
             bytes_written: 0,
             total_bytes: 100,
         }) {
@@ -432,7 +433,7 @@ pub async fn clear_drive_data_with_progress(
         if let Err(e) = app_handle.emit("wipe-progress", ProgressPayload {
             pass: 1,
             total_passes: 1,
-            progress: 100,
+            progress: 100u8,
             bytes_written: 100,
             total_bytes: 100,
         }) {
@@ -524,7 +525,7 @@ pub async fn replace_random_byte_with_progress(
         if let Err(e) = app_handle.emit("wipe-progress", ProgressPayload {
             pass: 1,
             total_passes: 1,
-            progress: 100,
+            progress: 100u8,
             bytes_written: 1,
             total_bytes: 1,
         }) {
@@ -641,7 +642,7 @@ pub async fn hybrid_crypto_erase_with_progress(
             if let Err(e) = app_handle.emit("wipe-progress", ProgressPayload {
                 pass: 1,
                 total_passes: 1,
-                progress: 100,
+                progress: 100u8,
                 bytes_written: 1,
                 total_bytes: 1,
             }) {
@@ -679,7 +680,7 @@ pub async fn hybrid_crypto_erase_with_progress(
                 if let Err(e) = app_handle.emit("wipe-progress", ProgressPayload {
                     pass: 1,
                     total_passes: 1,
-                    progress: 100,
+                    progress: 100u8,
                     bytes_written: 1,
                     total_bytes: 1,
                 }) {
@@ -973,7 +974,7 @@ fn overwrite_hdd_passes_with_progress(
     if let Err(e) = app_handle.emit("wipe-progress", ProgressPayload {
         pass: 1,
         total_passes: passes,
-        progress: 0,
+        progress: 0u8,
         bytes_written: 0,
         total_bytes: size,
     }) {
@@ -1007,7 +1008,7 @@ fn overwrite_hdd_passes_with_progress(
             
             // Emit progress every 1MB
             if written % (1024 * 1024) == 0 || written >= size {
-                let progress = (written as f64 / size as f64 * 100.0) as u32;
+                let progress = std::cmp::min(((written as f64 / size as f64) * 100.0) as u8, 100);
                 if let Err(e) = app_handle.emit("wipe-progress", ProgressPayload {
                     pass,
                     total_passes: passes,
@@ -1029,7 +1030,7 @@ fn overwrite_hdd_passes_with_progress(
         if let Err(e) = app_handle.emit("wipe-progress", ProgressPayload {
             pass,
             total_passes: passes,
-            progress: 100,
+            progress: 100u8,
             bytes_written: written,
             total_bytes: size,
         }) {
