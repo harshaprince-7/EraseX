@@ -29,8 +29,8 @@ interface Certificate {
 
 function App() {
   const [authState, setAuthState] = useState<
-    "register" | "login" | "authenticated"
-  >("register");
+    "landing" | "register" | "login" | "authenticated"
+  >("landing");
   const [drives, setDrives] = useState<Drive[]>([]);
   const [showConfirm, setShowConfirm] = useState(false);
   const [pin, setPin] = useState("");
@@ -384,6 +384,13 @@ function App() {
     }
   };
 
+  if (authState === "landing") {
+  return (
+    <LandingPage
+      onLogin={() => setAuthState("login")}
+    />
+  );
+}
   // Show authentication pages if not authenticated
   if (authState === "register") {
     return (
@@ -1246,6 +1253,7 @@ function App() {
 
 // Dashboard Component
 import BootablePage from "./BootablePage";
+import LandingPage from "./LandingPage";
 
 function Dashboard({
   setCurrentPage,

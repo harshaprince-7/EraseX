@@ -1,5 +1,5 @@
 -- Create certificates table
-CREATE TABLE certificates (
+CREATE TABLE IF NOT EXISTS certificates (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     drive VARCHAR(255) NOT NULL,

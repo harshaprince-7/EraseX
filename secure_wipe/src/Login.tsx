@@ -5,9 +5,10 @@ import { invoke } from "@tauri-apps/api/core";
 interface LoginProps {
   onSuccess: (token: string, user: any, pin: string) => void; // updated to include PIN
   onSwitch: () => void;
+  onBack: ()=> void
 }
 
-const Login = ({ onSuccess, onSwitch }: LoginProps) => {
+const Login = ({ onSuccess, onSwitch, onBack }: LoginProps) => {
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -61,6 +62,11 @@ const Login = ({ onSuccess, onSwitch }: LoginProps) => {
     <div className="auth-container">
       <div className="auth-panel">
         <div className="welcome-panel">
+          <button className="back-button" onClick={onBack}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M15 18L9 12L15 6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
           <h1>Welcome Back!</h1>
           <p>To keep connected with us please login with your personal info</p>
           <button className="outline-btn" onClick={onSwitch}>
