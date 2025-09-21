@@ -5,7 +5,7 @@ use rsa::pkcs8::EncodePublicKey;
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenAuditCertificate {
     pub version: String,
     pub certificate_id: String,
@@ -16,9 +16,10 @@ pub struct OpenAuditCertificate {
     pub compliance_attestations: Vec<ComplianceAttestation>,
     pub witness_signatures: Vec<WitnessSignature>,
     pub blockchain_anchor: Option<BlockchainAnchor>,
+    pub integrity_hash: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditAuthority {
     pub name: String,
     pub certificate_authority: String,
@@ -26,7 +27,7 @@ pub struct AuditAuthority {
     pub accreditation: String, // ISO 27001, NIST, etc.
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WipeOperation {
     pub device_id: String,
     pub drives: Vec<String>,
@@ -35,9 +36,10 @@ pub struct WipeOperation {
     pub operator: String,
     pub location: String,
     pub timestamp: DateTime<Utc>,
+    pub status: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DigitalSignature {
     pub algorithm: String, // RSA-SHA256
     pub signature: String,
@@ -45,7 +47,7 @@ pub struct DigitalSignature {
     pub certificate_chain: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimestampToken {
     pub authority: String,
     pub timestamp: DateTime<Utc>,
@@ -53,7 +55,7 @@ pub struct TimestampToken {
     pub signature: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComplianceAttestation {
     pub standard: String, // NIST 800-88, ISO 27001
     pub version: String,
@@ -61,7 +63,7 @@ pub struct ComplianceAttestation {
     pub auditor_signature: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WitnessSignature {
     pub witness_name: String,
     pub witness_role: String,
@@ -69,7 +71,7 @@ pub struct WitnessSignature {
     pub timestamp: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockchainAnchor {
     pub blockchain: String, // Ethereum, Bitcoin
     pub transaction_hash: String,
@@ -99,7 +101,7 @@ pub fn generate_open_audit_certificate(
     // Generate compliance attestations
     let compliance_attestations = generate_compliance_attestations(&wipe_data)?;
     
-    Ok(OpenAuditCertificate {
+    let mut certificate = OpenAuditCertificate {
         version: "1.0".to_string(),
         certificate_id,
         issuer: AuditAuthority {
@@ -119,7 +121,13 @@ pub fn generate_open_audit_certificate(
         compliance_attestations,
         witness_signatures: vec![], // To be added by witnesses
         blockchain_anchor: None, // Optional blockchain anchoring
-    })
+        integrity_hash: String::new(), // Will be calculated below
+    };
+    
+    // Calculate integrity hash of all content except the hash field itself
+    certificate.integrity_hash = calculate_integrity_hash(&certificate)?;
+    
+    Ok(certificate)
 }
 
 fn sign_content(content: &str, private_key: &RsaPrivateKey) -> Result<String, String> {
@@ -218,6 +226,11 @@ pub async fn verify_open_audit_certificate(
         return Err("Digital signature is missing".to_string());
     }
     
+    // Verify integrity hash first
+    if !verify_integrity_hash(cert)? {
+        return Err("Certificate integrity check failed - content has been modified".to_string());
+    }
+    
     // Check database for certificate existence (optional - certificate can be valid without being in our DB)
     let row = sqlx::query!(
         "SELECT certificate_id, device_id, drives FROM audit_certificates WHERE certificate_id = $1",
@@ -267,6 +280,7 @@ pub async fn generate_audit_certificate(
     user: String,
     compliance_standard: String,
     user_id: i32,
+    status: Option<String>,
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<String, String> {
     // Generate RSA key pair (in production, use existing CA keys)
@@ -286,6 +300,7 @@ pub async fn generate_audit_certificate(
         operator: user,
         location: "Unknown".to_string(),
         timestamp: Utc::now(),
+        status: status.unwrap_or_else(|| "completed".to_string()),
     };
     
     let certificate = generate_open_audit_certificate(wipe_operation, &private_key)?;
@@ -300,8 +315,8 @@ pub async fn generate_audit_certificate(
             issuer_accreditation, device_id, drives, wipe_method, compliance_standard, 
             operator_name, operation_location, operation_timestamp, signature_algorithm, 
             digital_signature, signature_public_key, tsa_authority, tsa_timestamp, 
-            tsa_token, tsa_signature, compliance_attestations, full_certificate
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)"#,
+            tsa_token, tsa_signature, compliance_attestations, full_certificate, integrity_hash
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)"#,
         certificate.certificate_id,
         user_id,
         certificate.version,
@@ -324,7 +339,8 @@ pub async fn generate_audit_certificate(
         certificate.timestamp_authority.token,
         certificate.timestamp_authority.signature,
         serde_json::to_value(&certificate.compliance_attestations).unwrap_or_default(),
-        cert_json
+        cert_json,
+        certificate.integrity_hash
     )
     .execute(&state.db)
     .await
@@ -361,6 +377,23 @@ pub async fn verify_audit_certificate(
             }
         }
     }
+}
+
+fn calculate_integrity_hash(cert: &OpenAuditCertificate) -> Result<String, String> {
+    let mut temp_cert = cert.clone();
+    temp_cert.integrity_hash = String::new(); // Clear hash field for calculation
+    
+    let content = serde_json::to_string(&temp_cert)
+        .map_err(|e| format!("Hash serialization error: {}", e))?;
+    
+    let mut hasher = Sha256::new();
+    hasher.update(content.as_bytes());
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+fn verify_integrity_hash(cert: &OpenAuditCertificate) -> Result<bool, String> {
+    let expected_hash = calculate_integrity_hash(cert)?;
+    Ok(cert.integrity_hash == expected_hash)
 }
 
 // Standalone structural verification for external certificates
@@ -418,8 +451,47 @@ fn verify_certificate_structure(cert: &OpenAuditCertificate) -> Result<bool, Str
         return Err("Incomplete subject information".to_string());
     }
     
+    // Verify integrity hash
+    if !verify_integrity_hash(cert)? {
+        return Err("Certificate integrity check failed - content has been modified".to_string());
+    }
+    
     // All structural checks passed
     Ok(true)
+}
+
+#[tauri::command]
+pub async fn make_audit_certificate_readonly(
+    file_path: String,
+) -> Result<(), String> {
+    use std::process::Command;
+    
+    if cfg!(windows) {
+        // Method 1: Remove all permissions except read for current user
+        let _ = Command::new("icacls")
+            .args(&[&file_path, "/inheritance:r"])
+            .status();
+            
+        // Method 2: Deny write/modify permissions
+        let username = std::env::var("USERNAME").unwrap_or_default();
+        let _ = Command::new("icacls")
+            .args(&[&file_path, "/deny", &format!("{}:(W,M,D)", username)])
+            .status();
+            
+        // Method 3: Set read-only attribute
+        Command::new("attrib")
+            .args(&["+R", "+S", &file_path])
+            .status()
+            .map_err(|e| format!("Failed to make file read-only: {}", e))?;
+    } else {
+        // Linux: Remove write permissions for all users
+        Command::new("chmod")
+            .args(["444", &file_path])
+            .status()
+            .map_err(|e| format!("Failed to make file read-only: {}", e))?;
+    }
+    
+    Ok(())
 }
 
 #[tauri::command]
@@ -470,6 +542,7 @@ pub async fn get_audit_certificate_json(
                 user_row.username,
                 "NIST 800-88, DoD 5220.22-M".to_string(),
                 user_id,
+                Some("completed".to_string()),
                 state
             ).await?;
             

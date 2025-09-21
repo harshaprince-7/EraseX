@@ -90,6 +90,9 @@ function App() {
   const [showProgressModal, setShowProgressModal] = useState(false);
   const [progressMinimized, setProgressMinimized] = useState(false);
   const [wipeProgress, setWipeProgress] = useState({ pass: 1, totalPasses: 7, progress: 0, bytesWritten: 0, totalBytes: 1 });
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [cancelPin, setCancelPin] = useState("");
+  const [cancelError, setCancelError] = useState("");
 
   // Enhanced drive type detection
   const [driveTypes, setDriveTypes] = useState<{[key: string]: string}>({});
@@ -355,6 +358,13 @@ function App() {
       setPin("");
       setError("");
 
+      // Reset cancellation flag before starting wipe
+      try {
+        await invoke("reset_wipe_cancelled");
+      } catch (err) {
+        console.error("Failed to reset cancellation flag:", err);
+      }
+      
       // Show progress modal for USB drives
       const isUsbDrive = selected.some(drive => {
         const driveType = driveTypes[drive] || "";
@@ -417,6 +427,7 @@ function App() {
             user: username,
             complianceStandard: "NIST 800-88, DoD 5220.22-M",
             userId: currentUserId,
+            status: "completed",
           });
           
           // Generate regular certificate for database
@@ -432,10 +443,22 @@ function App() {
           const blob = new Blob([auditCert], { type: 'application/json' });
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
+          const filename = `audit_certificate_${Date.now()}.json`;
           a.href = url;
-          a.download = `audit_certificate_${Date.now()}.json`;
+          a.download = filename;
           a.click();
           URL.revokeObjectURL(url);
+          
+          // Make the downloaded file read-only after a short delay
+          setTimeout(async () => {
+            try {
+              const downloadsPath = await invoke<string>("select_folder");
+              const filePath = `${downloadsPath}\\${filename}`;
+              await invoke("make_audit_certificate_readonly", { filePath });
+            } catch (err) {
+              console.log("Could not make file read-only:", err);
+            }
+          }, 2000);
 
           setErrorMessage(`✅ Wiping completed successfully!`);
         } catch (certErr) {
@@ -1300,12 +1323,20 @@ function App() {
           <div className={`modal-content ${progressMinimized ? 'minimized-content' : ''}`}>
             <div className="modal-header">
               <h2>🔄 Secure Wipe in Progress</h2>
-              <button 
-                className="minimize-btn"
-                onClick={() => setProgressMinimized(!progressMinimized)}
-              >
-                {progressMinimized ? '🔼' : '🔽'}
-              </button>
+              <div className="modal-header-buttons">
+                <button 
+                  className="cancel-btn"
+                  onClick={() => setShowCancelConfirm(true)}
+                >
+                  ❌ Cancel
+                </button>
+                <button 
+                  className="minimize-btn"
+                  onClick={() => setProgressMinimized(!progressMinimized)}
+                >
+                  {progressMinimized ? '🔼' : '🔽'}
+                </button>
+              </div>
             </div>
             {!progressMinimized && (
               <>
@@ -1325,6 +1356,74 @@ function App() {
                 <p className="progress-warning">⚠️ Do not disconnect the drive or close the application</p>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Confirmation Modal */}
+      {showCancelConfirm && (
+        <div className="modal">
+          <div className="modal-content">
+            <h2>⚠️ Cancel Wipe Operation</h2>
+            <p>Are you sure you want to cancel the wipe operation? This may leave data in an inconsistent state.</p>
+            <input
+              type="password"
+              value={cancelPin}
+              onChange={(e) => setCancelPin(e.target.value)}
+              placeholder="Enter PIN to confirm cancellation"
+            />
+            {cancelError && <p className="error">{cancelError}</p>}
+            <div className="modal-actions">
+              <button
+                onClick={async () => {
+                  if (!cancelPin) {
+                    setCancelError("PIN is required to cancel");
+                    return;
+                  }
+                  try {
+                    const isValid = await invoke<boolean>("verify_user_pin", {
+                      userId: currentUserId,
+                      pin: cancelPin,
+                    });
+                    if (!isValid) {
+                      setCancelError("❌ Incorrect PIN");
+                      return;
+                    }
+                    
+                    // Cancel the wipe operation
+                    try {
+                      const selected = drives.filter((d) => d.selected).map((d) => d.name);
+                      await invoke("cancel_wipe_operation", {
+                        userId: currentUserId,
+                        drive: selected.join(", "),
+                        wipeMode: selectedWipe === "Purge" ? selectedRandomMethod : selectedWipe,
+                        username: username,
+                      });
+                      setShowProgressModal(false);
+                      setShowCancelConfirm(false);
+                      setCancelPin("");
+                      setCancelError("");
+                      setErrorMessage("⚠️ Wipe operation cancelled - Certificate generated");
+                    } catch (err) {
+                      setCancelError(`Failed to cancel operation: ${err}`);
+                    }
+                  } catch (err) {
+                    setCancelError(`Error verifying PIN: ${err}`);
+                  }
+                }}
+              >
+                Confirm Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowCancelConfirm(false);
+                  setCancelPin("");
+                  setCancelError("");
+                }}
+              >
+                Continue Wipe
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1627,52 +1726,61 @@ function Certificates({ userId }: { userId: number }) {
                 </p>
 
                 <div style={{display: 'flex', gap: '10px'}}>
-                  {cert.status === 'completed' && (
-                    <button 
-                      className="back-btn"
-                      onClick={async () => {
-                        try {
-                          const auditCert = await invoke("generate_audit_certificate", {
-                            drive: cert.drive,
-                            wipeMode: cert.wipe_mode,
-                            user: username,
-                            complianceStandard: "NIST 800-88, DoD 5220.22-M",
-                            userId: currentUserId,
-                          });
-                          
-                          await invoke("download_certificate", {
-                            content: auditCert,
-                            filename: `audit_certificate_${cert.drive.replace(/[:\\\s]/g, '_')}_${Date.now()}.json`
-                          });
-                        } catch (err) {
-                          alert(`Error: ${err}`);
-                        }
-                      }}
-                    >
-                      Download Audit JSON
-                    </button>
-                  )}
-                  {cert.status === 'completed' && (
-                    <button 
-                      className="back-btn"
-                      onClick={async () => {
-                        try {
-                          await invoke("download_certificate_pdf", {
-                            drive: cert.drive,
-                            wipeMode: cert.wipe_mode,
-                            deviceId: cert.device_id,
-                            timestamp: cert.timestamp,
-                            hash: "[PROTECTED]",
-                            filename: `certificate_${cert.drive.replace(/[:\\\s]/g, '_')}_${cert.timestamp.replace(/[:\s]/g, '_')}.pdf`
-                          });
-                        } catch (err) {
-                          alert(`Error downloading certificate: ${err}`);
-                        }
-                      }}
-                    >
-                      Download PDF
-                    </button>
-                  )}
+                  <button 
+                    className="back-btn"
+                    onClick={async () => {
+                      try {
+                        const auditCert = await invoke("generate_audit_certificate", {
+                          drive: cert.drive,
+                          wipeMode: cert.wipe_mode,
+                          user: username,
+                          complianceStandard: "NIST 800-88, DoD 5220.22-M",
+                          userId: currentUserId,
+                          status: cert.status,
+                        });
+                        
+                        const filename = `audit_certificate_${cert.drive.replace(/[:\\\s]/g, '_')}_${Date.now()}.json`;
+                        await invoke("download_certificate", {
+                          content: auditCert,
+                          filename
+                        });
+                        
+                        // Make the downloaded file read-only
+                        setTimeout(async () => {
+                          try {
+                            const downloadsPath = await invoke<string>("select_folder");
+                            const filePath = `${downloadsPath}\\${filename}`;
+                            await invoke("make_audit_certificate_readonly", { filePath });
+                          } catch (err) {
+                            console.log("Could not make file read-only:", err);
+                          }
+                        }, 2000);
+                      } catch (err) {
+                        alert(`Error: ${err}`);
+                      }
+                    }}
+                  >
+                    Download Audit JSON
+                  </button>
+                  <button 
+                    className="back-btn"
+                    onClick={async () => {
+                      try {
+                        await invoke("download_certificate_pdf", {
+                          drive: cert.drive,
+                          wipeMode: cert.wipe_mode,
+                          deviceId: cert.device_id,
+                          timestamp: cert.timestamp,
+                          status: cert.status,
+                          filename: `certificate_${cert.drive.replace(/[:\\\s]/g, '_')}_${cert.timestamp.replace(/[:\s]/g, '_')}.pdf`
+                        });
+                      } catch (err) {
+                        alert(`Error downloading certificate: ${err}`);
+                      }
+                    }}
+                  >
+                    Download PDF
+                  </button>
                 </div>
               </div>
               

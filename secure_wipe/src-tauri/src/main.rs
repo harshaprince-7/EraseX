@@ -733,7 +733,7 @@ async fn download_certificate_pdf(
     wipe_mode: String,
     device_id: String,
     timestamp: String,
-    _hash: String,
+    status: String,
     filename: String,
 ) -> Result<(), String> {
     use printpdf::*;
@@ -777,11 +777,14 @@ async fn download_certificate_pdf(
     current_layer.use_text("Certificate ID:", 11.0, Mm(25.0), Mm(y_start - line_height * 5.5), &font_bold);
     current_layer.use_text("[CRYPTOGRAPHICALLY PROTECTED]", 11.0, Mm(60.0), Mm(y_start - line_height * 5.5), &font_regular);
     
+    current_layer.use_text("Status:", 11.0, Mm(25.0), Mm(y_start - line_height * 6.5), &font_bold);
+    current_layer.use_text(&status, 11.0, Mm(60.0), Mm(y_start - line_height * 6.5), &font_regular);
+    
     // Compliance section
-    current_layer.use_text("COMPLIANCE STANDARDS", 14.0, Mm(20.0), Mm(140.0), &font_bold);
-    current_layer.use_text("✓ NIST 800-88 Rev. 1 Guidelines for Media Sanitization", 10.0, Mm(25.0), Mm(130.0), &font_regular);
-    current_layer.use_text("✓ DoD 5220.22-M Data Sanitization Standard", 10.0, Mm(25.0), Mm(122.0), &font_regular);
-    current_layer.use_text("✓ ISO/IEC 27001 Information Security Management", 10.0, Mm(25.0), Mm(114.0), &font_regular);
+    current_layer.use_text("COMPLIANCE STANDARDS", 14.0, Mm(20.0), Mm(130.0), &font_bold);
+    current_layer.use_text("✓ NIST 800-88 Rev. 1 Guidelines for Media Sanitization", 10.0, Mm(25.0), Mm(120.0), &font_regular);
+    current_layer.use_text("✓ DoD 5220.22-M Data Sanitization Standard", 10.0, Mm(25.0), Mm(112.0), &font_regular);
+    current_layer.use_text("✓ ISO/IEC 27001 Information Security Management", 10.0, Mm(25.0), Mm(104.0), &font_regular);
     
     // Watermark - TraceZero logo image with opacity
     if let Ok(logo_bytes) = std::fs::read("TraceZero.jpg") {
@@ -808,9 +811,9 @@ async fn download_certificate_pdf(
                 let image = Image::from(raw_image);
                 image.add_to_layer(current_layer.clone(), ImageTransform {
                     translate_x: Some(Mm(50.0)),
-                    translate_y: Some(Mm(120.0)),
-                    scale_x: Some(0.6),
-                    scale_y: Some(0.6),
+                    translate_y: Some(Mm(150.0)),
+                    scale_x: Some(0.5),
+                    scale_y: Some(0.5),
                     rotate: None,
                     dpi: Some(150.0),
                 });
@@ -953,6 +956,30 @@ async fn lock_sensitive_files(
                 .map_err(|e| format!("Failed to lock file {}: {}", file_path, e))?;
         }
     }
+    
+    Ok(())
+}
+
+#[command]
+async fn cancel_wipe_operation(
+    user_id: i32,
+    drive: String,
+    wipe_mode: String,
+    username: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    // Set cancellation flag
+    ssd::set_wipe_cancelled();
+    
+    // Generate cancellation certificate
+    generate_certificate(
+        drive,
+        wipe_mode,
+        username,
+        user_id,
+        Some("cancelled - Operation stopped by user".to_string()),
+        state,
+    ).await?;
     
     Ok(())
 }
@@ -1159,6 +1186,7 @@ async fn main() {
     open_audit::generate_audit_certificate,
     open_audit::verify_audit_certificate,
     open_audit::get_audit_certificate_json,
+    open_audit::make_audit_certificate_readonly,
     android_wipe::secure_wipe_android,
     android_wipe::check_root_access,
     android_wipe::root_secure_wipe,
@@ -1172,6 +1200,9 @@ async fn main() {
     ssd::hybrid_crypto_erase,
     ssd::detect_drive_info,
     ssd::overwrite_usb_files_with_progress,
+    ssd::set_wipe_cancelled,
+    ssd::reset_wipe_cancelled,
+    cancel_wipe_operation,
 
 
 ])

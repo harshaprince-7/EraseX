@@ -4527,3 +4527,35 @@ body::before {
   background: rgba(255, 255, 255, 0.1);
   transform: scale(1.1);
 }
+
+/* Modal Header Buttons */
+.modal-header-buttons {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.cancel-btn {
+  background: var(--danger-gradient);
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.cancel-btn:hover {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+}
+
+.cancel-btn:active {
+  transform: scale(0.98);
+}

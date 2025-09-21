@@ -4,6 +4,19 @@ use std::fs::OpenOptions;
 use std::io::{Write, Seek, SeekFrom};
 use rand::Rng;
 use serde::Serialize;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static WIPE_CANCELLED: AtomicBool = AtomicBool::new(false);
+
+#[command]
+pub fn set_wipe_cancelled() {
+    WIPE_CANCELLED.store(true, Ordering::Relaxed);
+}
+
+#[command] 
+pub fn reset_wipe_cancelled() {
+    WIPE_CANCELLED.store(false, Ordering::Relaxed);
+}
 
 #[derive(Clone, Serialize)]
 struct ProgressPayload {
@@ -199,6 +212,12 @@ pub async fn overwrite_usb_files_with_progress(
     }
     
     for pass in 1..=passes {
+        // Check for cancellation at start of each pass
+        if WIPE_CANCELLED.load(Ordering::Relaxed) {
+            println!("Wipe operation cancelled by user");
+            return Err("Wipe operation cancelled by user".to_string());
+        }
+        
         println!("Starting pass {} of {} on drive {}", pass, passes, driveLetter);
         
         // Create a large file to fill the drive
@@ -212,6 +231,11 @@ pub async fn overwrite_usb_files_with_progress(
         
         let mut written = 0u64;
         while written < target_size {
+            // Check for cancellation in write loop
+            if WIPE_CANCELLED.load(Ordering::Relaxed) {
+                println!("Wipe operation cancelled by user");
+                return Err("Wipe operation cancelled by user".to_string());
+            }
             let remaining = std::cmp::min(chunk_size, target_size - written);
             let mut buffer = vec![0u8; remaining as usize];
             
