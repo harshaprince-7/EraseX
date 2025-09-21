@@ -25,7 +25,6 @@ interface Certificate {
   device_id: string;
   timestamp: string;
   content: string;
-  hash: string;
 }
 
 function App() {
@@ -1597,71 +1596,24 @@ function Certificates({ userId }: { userId: number }) {
                   <br />
                   <pre>{cert.content}</pre>
                 </p>
-                <p>
-                  <strong>Hash:</strong> {cert.hash}
-                </p>
+
                 <div style={{display: 'flex', gap: '10px'}}>
                   <button 
                     className="back-btn"
-                    onClick={() => {
+                    onClick={async () => {
                       try {
-                        // Create audit certificate JSON from existing certificate data
-                        const auditCertificate = {
-                          "version": "1.0",
-                          "certificate_id": `cert-${cert.id}-${Date.now()}`,
-                          "issuer": {
-                            "name": "SecureWipe Audit Authority",
-                            "certificate_authority": "GlobalTrust CA",
-                            "public_key": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzu7SWb0qgrGmfGp1NdBH\nJiJ+CzwTLMjQ98lPDlL0c0IX0oVPVWTGm33rjvSrgnfK9tClKzeh6C+7/xx4i15J\np2g2qEtehmMAzzUsT1fQEg+DSgXpd60Xl6ng2oGgG1VS8/WXVQYzpsSoUN9J01PW\n0ibFADkI9DyeY+8TKiP8wpYfgLjf5IEBzEwiBNyqUduAWNFB5FH8N62XspbVvb7i\nmnZkmxTExZOEntXpbuo8qRMKfhh1qIXBrOB/pcDx/6lx9fzdAK1/zsz4y64FRqMh\nqZrYlJJYLj7L1Luz0QE+s54lt4n+s+IuDb6GEJDodPghwxPbX2TMIaFSpXPsphvv\nZQIDAQAB\n-----END PUBLIC KEY-----\n",
-                            "accreditation": "ISO 27001:2013, NIST Cybersecurity Framework"
-                          },
-                          "subject": {
-                            "device_id": cert.device_id,
-                            "drives": [cert.drive],
-                            "wipe_method": cert.wipe_mode,
-                            "compliance_standard": "NIST 800-88, DoD 5220.22-M",
-                            "operator": username || "Unknown",
-                            "location": "Unknown",
-                            "timestamp": cert.timestamp
-                          },
-                          "digital_signature": {
-                            "algorithm": "RSA-SHA256",
-                            "signature": cert.hash,
-                            "public_key": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzu7SWb0qgrGmfGp1NdBH\nJiJ+CzwTLMjQ98lPDlL0c0IX0oVPVWTGm33rjvSrgnfK9tClKzeh6C+7/xx4i15J\np2g2qEtehmMAzzUsT1fQEg+DSgXpd60Xl6ng2oGgG1VS8/WXVQYzpsSoUN9J01PW\n0ibFADkI9DyeY+8TKiP8wpYfgLjf5IEBzEwiBNyqUduAWNFB5FH8N62XspbVvb7i\nmnZkmxTExZOEntXpbuo8qRMKfhh1qIXBrOB/pcDx/6lx9fzdAK1/zsz4y64FRqMh\nqZrYlJJYLj7L1Luz0QE+s54lt4n+s+IuDb6GEJDodPghwxPbX2TMIaFSpXPsphvv\nZQIDAQAB\n-----END PUBLIC KEY-----\n",
-                            "certificate_chain": []
-                          },
-                          "timestamp_authority": {
-                            "authority": "GlobalTime TSA",
-                            "timestamp": new Date().toISOString(),
-                            "token": cert.hash.substring(0, 32),
-                            "signature": cert.hash.substring(0, 32)
-                          },
-                          "compliance_attestations": [
-                            {
-                              "standard": "NIST 800-88 Rev. 1",
-                              "version": "2014",
-                              "attestation": "Wipe operation complies with NIST guidelines for media sanitization",
-                              "auditor_signature": "mock_auditor_signature"
-                            },
-                            {
-                              "standard": "DoD 5220.22-M",
-                              "version": "2006",
-                              "attestation": "Wipe operation meets DoD requirements for classified information sanitization",
-                              "auditor_signature": "mock_dod_signature"
-                            }
-                          ],
-                          "witness_signatures": [],
-                          "blockchain_anchor": null
-                        };
+                        const auditCert = await invoke("generate_audit_certificate", {
+                          drive: cert.drive,
+                          wipeMode: cert.wipe_mode,
+                          user: username,
+                          complianceStandard: "NIST 800-88, DoD 5220.22-M",
+                          userId: currentUserId,
+                        });
                         
-                        const jsonString = JSON.stringify(auditCertificate, null, 2);
-                        const blob = new Blob([jsonString], { type: 'application/json' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `audit_certificate_${cert.drive.replace(/[:\\\s]/g, '_')}_${Date.now()}.json`;
-                        a.click();
-                        URL.revokeObjectURL(url);
+                        await invoke("download_certificate", {
+                          content: auditCert,
+                          filename: `audit_certificate_${cert.drive.replace(/[:\\\s]/g, '_')}_${Date.now()}.json`
+                        });
                       } catch (err) {
                         alert(`Error: ${err}`);
                       }
@@ -1678,7 +1630,7 @@ function Certificates({ userId }: { userId: number }) {
                           wipeMode: cert.wipe_mode,
                           deviceId: cert.device_id,
                           timestamp: cert.timestamp,
-                          hash: cert.hash,
+                          hash: "[PROTECTED]",
                           filename: `certificate_${cert.drive.replace(/[:\\\s]/g, '_')}_${cert.timestamp.replace(/[:\s]/g, '_')}.pdf`
                         });
                       } catch (err) {

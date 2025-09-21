@@ -164,7 +164,11 @@ async fn verify_user_pin(
         .await
         .map_err(|_| "User not found".to_string())?;
 
-    Ok(record.confirmation_pin.trim() == pin.trim())
+    if let Some(stored_pin) = record.confirmation_pin {
+        Ok(stored_pin.trim() == pin.trim())
+    } else {
+        Ok(false)
+    }
 }
 
 #[command]
@@ -213,7 +217,7 @@ async fn login_user(
                     user_id: user_record.id,
                     username: user_record.username,
                     email: user_record.email,
-                    confirmation_pin: user_record.confirmation_pin,
+                    confirmation_pin: user_record.confirmation_pin.unwrap_or_default(),
                 })
             } else {
                 Err("Invalid credentials".to_string())
@@ -655,7 +659,6 @@ struct Certificate {
     device_id: String,
     timestamp: chrono::DateTime<chrono::Utc>,
     content: String,
-    // hash field removed from user-visible struct
 }
 
 
@@ -724,7 +727,7 @@ async fn download_certificate_pdf(
     wipe_mode: String,
     device_id: String,
     timestamp: String,
-    hash: String,
+    _hash: String,
     filename: String,
 ) -> Result<(), String> {
     use printpdf::*;
