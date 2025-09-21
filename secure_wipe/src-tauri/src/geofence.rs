@@ -40,12 +40,27 @@ impl GeofenceManager {
     }
 
     pub async fn start_monitoring(&self, sensitive_files: Vec<String>, user_id: i32) -> Result<(), String> {
-        let mut monitoring = self.monitoring.lock().unwrap();
-        if *monitoring {
-            return Ok(());
+        {
+            let mut monitoring = self.monitoring.lock().unwrap();
+            if *monitoring {
+                return Ok(());
+            }
+            *monitoring = true;
         }
-        *monitoring = true;
-        drop(monitoring);
+
+        // Always lock files when starting monitoring to maintain security
+        println!("Starting geofence monitoring - locking sensitive files");
+        if let Err(e) = Self::lock_files(&sensitive_files, user_id).await {
+            eprintln!("Failed to lock files on startup: {}", e);
+        }
+        
+        // Set initial status as locked
+        {
+            let mut status_guard = self.status.lock().unwrap();
+            status_guard.files_locked = true;
+            status_guard.inside_geofence = false; // Start as outside for security
+            status_guard.last_check = chrono::Utc::now().to_rfc3339();
+        }
 
         let config = self.config.clone();
         let status = self.status.clone();
@@ -56,17 +71,17 @@ impl GeofenceManager {
                 let should_continue = *monitoring_flag.lock().unwrap();
                 should_continue
             } {
-                let (cfg_opt, current_inside) = {
+                let cfg_opt = {
                     let config_guard = config.lock().unwrap();
-                    let status_guard = status.lock().unwrap();
-                    (config_guard.clone(), status_guard.inside_geofence)
+                    config_guard.clone()
                 };
                 
                 if let Some(cfg) = cfg_opt {
                     if cfg.enabled {
                         let inside = Self::check_location(&cfg).await;
                         
-                        if current_inside && !inside {
+                        // Always ensure files are locked unless explicitly unlocked via PIN
+                        if !inside {
                             if let Err(e) = Self::lock_files(&sensitive_files, user_id).await {
                                 eprintln!("Failed to lock files: {}", e);
                             }
@@ -75,7 +90,7 @@ impl GeofenceManager {
                         {
                             let mut status_guard = status.lock().unwrap();
                             status_guard.inside_geofence = inside;
-                            status_guard.files_locked = !inside;
+                            // Files remain locked regardless of location (PIN required to unlock)
                             status_guard.last_check = chrono::Utc::now().to_rfc3339();
                         }
                     }

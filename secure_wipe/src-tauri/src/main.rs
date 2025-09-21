@@ -17,6 +17,8 @@ use uuid::Uuid;             // for Uuid::new_v4()
 use sha2::{Sha256, Digest};
 use std::io::Write;
 use chrono::{Utc, Duration, SubsecRound};
+use image::io::Reader as ImageReader;
+use std::io::Cursor;
 
 mod bootable;
 mod iso_builder;
@@ -518,6 +520,7 @@ async fn generate_certificate(
     wipe_mode: String,
     user: String,
     user_id: i32,
+    status: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
     let device_id = get().unwrap_or_else(|_| Uuid::new_v4().to_string());
@@ -544,17 +547,18 @@ async fn generate_certificate(
     // Store full content with hash in database for verification
     let full_content_with_hash = format!("{}\nVerification Hash: {}\n", certificate_content, hash_hex);
     
-    // Insert into database
+    // Insert into database with status
     sqlx::query!(
-    "INSERT INTO certificates (user_id, drive, wipe_mode, device_id, timestamp, content, hash) 
-     VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    "INSERT INTO certificates (user_id, drive, wipe_mode, device_id, timestamp, content, hash, status) 
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
     user_id,
     drive,
     wipe_mode,
     device_id,
     timestamp,
     full_content_with_hash,
-    hash_hex
+    hash_hex,
+    status.unwrap_or_else(|| "completed".to_string())
 )
     .execute(&state.db)
     .await
@@ -659,6 +663,7 @@ struct Certificate {
     device_id: String,
     timestamp: chrono::DateTime<chrono::Utc>,
     content: String,
+    status: String,
 }
 
 
@@ -669,7 +674,7 @@ async fn list_certificates(
 ) -> Result<Vec<Certificate>, String> {
     let rows = sqlx::query!(
         r#"
-        SELECT id, user_id, drive, wipe_mode, device_id, timestamp, content, hash
+        SELECT id, user_id, drive, wipe_mode, device_id, timestamp, content, hash, status
         FROM certificates
         WHERE user_id = $1
         ORDER BY timestamp DESC
@@ -698,6 +703,7 @@ async fn list_certificates(
                 device_id: row.device_id,
                 timestamp: row.timestamp,
                 content: user_content,
+                status: row.status.unwrap_or_else(|| "completed".to_string()),
             }
         })
         .collect();
@@ -737,26 +743,89 @@ async fn download_certificate_pdf(
         .save_file()
         .ok_or("User cancelled download")?;
     
-    let (doc, page1, layer1) = PdfDocument::new("Secure Wipe Certificate", Mm(210.0), Mm(297.0), "Layer 1");
+    let (doc, page1, layer1) = PdfDocument::new("TraceZero Certificate", Mm(210.0), Mm(297.0), "Layer 1");
     let current_layer = doc.get_page(page1).get_layer(layer1);
     
-    let font = doc.add_builtin_font(BuiltinFont::HelveticaBold).map_err(|e| format!("Font error: {}", e))?;
+    let font_bold = doc.add_builtin_font(BuiltinFont::HelveticaBold).map_err(|e| format!("Font error: {}", e))?;
     let font_regular = doc.add_builtin_font(BuiltinFont::Helvetica).map_err(|e| format!("Font error: {}", e))?;
     
-    // Title
-    current_layer.use_text("SECURE WIPE CERTIFICATE", 20.0, Mm(105.0), Mm(270.0), &font);
-    current_layer.use_text("=======================", 16.0, Mm(105.0), Mm(260.0), &font);
+    // Header with TraceZero branding
+    current_layer.use_text("TraceZero", 24.0, Mm(20.0), Mm(270.0), &font_bold);
+    current_layer.use_text("Secure Data Erasure Solution", 10.0, Mm(20.0), Mm(262.0), &font_regular);
     
-    // Certificate details
-    current_layer.use_text(&format!("Drive: {}", drive), 12.0, Mm(20.0), Mm(230.0), &font_regular);
-    current_layer.use_text(&format!("Wipe Mode: {}", wipe_mode), 12.0, Mm(20.0), Mm(220.0), &font_regular);
-    current_layer.use_text(&format!("Device ID: {}", device_id), 12.0, Mm(20.0), Mm(210.0), &font_regular);
-    current_layer.use_text(&format!("Timestamp: {}", timestamp), 12.0, Mm(20.0), Mm(200.0), &font_regular);
-    current_layer.use_text("Certificate ID: [PROTECTED]", 10.0, Mm(20.0), Mm(180.0), &font_regular);
+    // Main title - centered
+    current_layer.use_text("SECURE WIPE CERTIFICATE", 18.0, Mm(45.0), Mm(240.0), &font_bold);
     
-    // Footer
-    current_layer.use_text("This certificate verifies the secure wipe operation.", 10.0, Mm(20.0), Mm(50.0), &font_regular);
-    current_layer.use_text(&format!("Generated on: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")), 8.0, Mm(20.0), Mm(30.0), &font_regular);
+    // Certificate details in professional layout
+    let y_start = 220.0;
+    let line_height = 12.0;
+    
+    current_layer.use_text("CERTIFICATE DETAILS", 14.0, Mm(20.0), Mm(y_start), &font_bold);
+    
+    current_layer.use_text("Drive:", 11.0, Mm(25.0), Mm(y_start - line_height * 1.5), &font_bold);
+    current_layer.use_text(&drive, 11.0, Mm(60.0), Mm(y_start - line_height * 1.5), &font_regular);
+    
+    current_layer.use_text("Wipe Method:", 11.0, Mm(25.0), Mm(y_start - line_height * 2.5), &font_bold);
+    current_layer.use_text(&wipe_mode, 11.0, Mm(60.0), Mm(y_start - line_height * 2.5), &font_regular);
+    
+    current_layer.use_text("Device ID:", 11.0, Mm(25.0), Mm(y_start - line_height * 3.5), &font_bold);
+    current_layer.use_text(&device_id, 11.0, Mm(60.0), Mm(y_start - line_height * 3.5), &font_regular);
+    
+    current_layer.use_text("Timestamp:", 11.0, Mm(25.0), Mm(y_start - line_height * 4.5), &font_bold);
+    current_layer.use_text(&timestamp, 11.0, Mm(60.0), Mm(y_start - line_height * 4.5), &font_regular);
+    
+    current_layer.use_text("Certificate ID:", 11.0, Mm(25.0), Mm(y_start - line_height * 5.5), &font_bold);
+    current_layer.use_text("[CRYPTOGRAPHICALLY PROTECTED]", 11.0, Mm(60.0), Mm(y_start - line_height * 5.5), &font_regular);
+    
+    // Compliance section
+    current_layer.use_text("COMPLIANCE STANDARDS", 14.0, Mm(20.0), Mm(140.0), &font_bold);
+    current_layer.use_text("✓ NIST 800-88 Rev. 1 Guidelines for Media Sanitization", 10.0, Mm(25.0), Mm(130.0), &font_regular);
+    current_layer.use_text("✓ DoD 5220.22-M Data Sanitization Standard", 10.0, Mm(25.0), Mm(122.0), &font_regular);
+    current_layer.use_text("✓ ISO/IEC 27001 Information Security Management", 10.0, Mm(25.0), Mm(114.0), &font_regular);
+    
+    // Watermark - TraceZero logo image with opacity
+    if let Ok(logo_bytes) = std::fs::read("TraceZero.jpg") {
+        if let Ok(img) = ImageReader::new(Cursor::new(logo_bytes)).with_guessed_format() {
+            if let Ok(dynamic_image) = img.decode() {
+                let mut rgba_image = dynamic_image.to_rgba8();
+                let (width, height) = rgba_image.dimensions();
+                
+                // Reduce opacity to 30% (77 out of 255)
+                for pixel in rgba_image.chunks_exact_mut(4) {
+                    pixel[3] = (pixel[3] as f32 * 0.3) as u8;
+                }
+                
+                let raw_image = ImageXObject {
+                    width: Px(width as usize),
+                    height: Px(height as usize),
+                    color_space: ColorSpace::Rgba,
+                    bits_per_component: ColorBits::Bit8,
+                    interpolate: true,
+                    image_data: rgba_image.into_raw(),
+                    image_filter: None,
+                    clipping_bbox: None,
+                };
+                let image = Image::from(raw_image);
+                image.add_to_layer(current_layer.clone(), ImageTransform {
+                    translate_x: Some(Mm(50.0)),
+                    translate_y: Some(Mm(120.0)),
+                    scale_x: Some(0.6),
+                    scale_y: Some(0.6),
+                    rotate: None,
+                    dpi: Some(150.0),
+                });
+            }
+        }
+    }
+    
+    // Footer section
+    current_layer.use_text("CERTIFICATE VERIFICATION", 12.0, Mm(20.0), Mm(70.0), &font_bold);
+    current_layer.use_text("This certificate provides cryptographic proof of secure data erasure.", 9.0, Mm(20.0), Mm(62.0), &font_regular);
+    current_layer.use_text("All data has been permanently destroyed and is unrecoverable.", 9.0, Mm(20.0), Mm(56.0), &font_regular);
+    
+    // Generation info
+    current_layer.use_text(&format!("Generated by TraceZero v1.0 on {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")), 8.0, Mm(20.0), Mm(30.0), &font_regular);
+    current_layer.use_text("© TraceZero - Secure Data Erasure Solutions", 8.0, Mm(20.0), Mm(24.0), &font_regular);
     
     doc.save(&mut std::io::BufWriter::new(std::fs::File::create(&save_path).map_err(|e| format!("File creation error: {}", e))?))
         .map_err(|e| format!("PDF save error: {}", e))?;

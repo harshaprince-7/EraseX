@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { User, MoreVertical, Sun, Moon, Shield, Lock } from "lucide-react";
 import "./App.css";
 import "./error-banner.css";
+import "./certificate-status.css";
 import Register from "./Register";
 import Login from "./Login";
 import BootableModal from "./BootableModal";
@@ -25,6 +26,7 @@ interface Certificate {
   device_id: string;
   timestamp: string;
   content: string;
+  status: string;
 }
 
 function App() {
@@ -365,77 +367,95 @@ function App() {
       }
 
       // Perform wipe operation on selected drives
+      let allWipesSuccessful = true;
+      let wipeErrors = [];
+      
       for (const drive of selected) {
         try {
           let wipeResult;
           if (selectedWipe === "Clear") {
-            // Regular deletion (recoverable)
             wipeResult = await invoke("clear_drive_data", {
-              selectedUsb: drive.replace(":", ""), // Remove colon from drive letter
+              selectedUsb: drive.replace(":", ""),
             });
           } else if (selectedWipe === "Destroy") {
-            // Check if it's a USB drive for progress tracking
             const driveType = driveTypes[drive] || "";
             if (driveType.includes("USB SSD") || drive.startsWith("F:")) {
-              // Use progress-enabled USB wipe
               wipeResult = await invoke("overwrite_usb_files_with_progress", {
                 driveLetter: drive,
                 passes: 7
               });
             } else {
-              // Hybrid crypto-erase (automatically detects drive type)
               wipeResult = await invoke("hybrid_crypto_erase", {
-                selectedUsb: drive.replace(":", ""), // Remove colon from drive letter
+                selectedUsb: drive.replace(":", ""),
               });
             }
           } else {
-            // Secure wipe (random byte overwrite)
             wipeResult = await invoke("replace_random_byte", {
               method: selectedWipe === "Purge" ? selectedRandomMethod : selectedWipe,
-              selectedUsb: drive.replace(":", ""), // Remove colon from drive letter
+              selectedUsb: drive.replace(":", ""),
             });
           }
           setErrorMessage(`✅ ${wipeResult}`);
         } catch (wipeErr) {
+          allWipesSuccessful = false;
           const sanitizedError = String(wipeErr).replace(/<[^>]*>/g, '');
+          wipeErrors.push(`${drive}: ${sanitizedError}`);
           setErrorMessage(`❌ Operation failed for ${drive}: ${sanitizedError}`);
-          setShowProgressModal(false);
-          return;
         }
       }
       
       // Close progress modal
       setShowProgressModal(false);
 
-      // Generate open audit certificate
-      const auditCert = await invoke("generate_audit_certificate", {
-        drive: selected.join(", "),
-        wipeMode: selectedWipe === "Purge" ? selectedRandomMethod : selectedWipe,
-        user: username,
-        complianceStandard: "NIST 800-88, DoD 5220.22-M",
-        userId: currentUserId,
-      });
-      
-      const certificate = JSON.parse(auditCert);
-      
-      // Also generate regular certificate for database
-      await invoke("generate_certificate", {
-        userId: currentUserId,
-        drive: selected.join(", "),
-        wipeMode: selectedWipe === "Purge" ? selectedRandomMethod : selectedWipe,
-        user: username,
-      });
-      
-      // Save audit certificate
-      const blob = new Blob([auditCert], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `audit_certificate_${Date.now()}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      // Generate certificates only if all wipes were successful
+      if (allWipesSuccessful) {
+        try {
+          // Generate open audit certificate
+          const auditCert = await invoke("generate_audit_certificate", {
+            drive: selected.join(", "),
+            wipeMode: selectedWipe === "Purge" ? selectedRandomMethod : selectedWipe,
+            user: username,
+            complianceStandard: "NIST 800-88, DoD 5220.22-M",
+            userId: currentUserId,
+          });
+          
+          // Generate regular certificate for database
+          await invoke("generate_certificate", {
+            userId: currentUserId,
+            drive: selected.join(", "),
+            wipeMode: selectedWipe === "Purge" ? selectedRandomMethod : selectedWipe,
+            user: username,
+            status: "completed"
+          });
+          
+          // Save audit certificate
+          const blob = new Blob([auditCert], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `audit_certificate_${Date.now()}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
 
-      setErrorMessage(`✅ Wiping completed!`);
+          setErrorMessage(`✅ Wiping completed successfully!`);
+        } catch (certErr) {
+          setErrorMessage(`⚠️ Wiping completed but certificate generation failed: ${certErr}`);
+        }
+      } else {
+        // Generate incomplete certificate for failed operations
+        try {
+          await invoke("generate_certificate", {
+            userId: currentUserId,
+            drive: selected.join(", "),
+            wipeMode: selectedWipe === "Purge" ? selectedRandomMethod : selectedWipe,
+            user: username,
+            status: `incomplete - ${wipeErrors.join('; ')}`
+          });
+        } catch (certErr) {
+          console.error("Failed to generate incomplete certificate:", certErr);
+        }
+        setErrorMessage(`❌ Wiping failed for some drives: ${wipeErrors.join('; ')}`);
+      }
     } catch (err) {
       alert(`❌ Error: ${err}`);
     }
@@ -1579,6 +1599,9 @@ function Certificates({ userId }: { userId: number }) {
           <li key={cert.id} className="cert-item">
             <div className="cert-summary" onClick={() => toggleCert(cert.id)}>
               <strong>{cert.drive}</strong> — {cert.wipe_mode}
+              <span className={`status-badge ${cert.status === 'completed' ? 'completed' : 'incomplete'}`}>
+                {cert.status === 'completed' ? '✅' : '❌'} {cert.status}
+              </span>
               <span className="expand-icon">
                 {expandedCert === cert.id ? "▲" : "▼"}
               </span>
@@ -1592,54 +1615,64 @@ function Certificates({ userId }: { userId: number }) {
                   <strong>Device:</strong> {cert.device_id}
                 </p>
                 <p>
+                  <strong>Status:</strong> 
+                  <span className={`status-badge ${cert.status === 'completed' ? 'completed' : 'incomplete'}`}>
+                    {cert.status === 'completed' ? '✅' : '❌'} {cert.status}
+                  </span>
+                </p>
+                <p>
                   <strong>Content:</strong>
                   <br />
                   <pre>{cert.content}</pre>
                 </p>
 
                 <div style={{display: 'flex', gap: '10px'}}>
-                  <button 
-                    className="back-btn"
-                    onClick={async () => {
-                      try {
-                        const auditCert = await invoke("generate_audit_certificate", {
-                          drive: cert.drive,
-                          wipeMode: cert.wipe_mode,
-                          user: username,
-                          complianceStandard: "NIST 800-88, DoD 5220.22-M",
-                          userId: currentUserId,
-                        });
-                        
-                        await invoke("download_certificate", {
-                          content: auditCert,
-                          filename: `audit_certificate_${cert.drive.replace(/[:\\\s]/g, '_')}_${Date.now()}.json`
-                        });
-                      } catch (err) {
-                        alert(`Error: ${err}`);
-                      }
-                    }}
-                  >
-                    Download Audit JSON
-                  </button>
-                  <button 
-                    className="back-btn"
-                    onClick={async () => {
-                      try {
-                        await invoke("download_certificate_pdf", {
-                          drive: cert.drive,
-                          wipeMode: cert.wipe_mode,
-                          deviceId: cert.device_id,
-                          timestamp: cert.timestamp,
-                          hash: "[PROTECTED]",
-                          filename: `certificate_${cert.drive.replace(/[:\\\s]/g, '_')}_${cert.timestamp.replace(/[:\s]/g, '_')}.pdf`
-                        });
-                      } catch (err) {
-                        alert(`Error downloading certificate: ${err}`);
-                      }
-                    }}
-                  >
-                    Download PDF
-                  </button>
+                  {cert.status === 'completed' && (
+                    <button 
+                      className="back-btn"
+                      onClick={async () => {
+                        try {
+                          const auditCert = await invoke("generate_audit_certificate", {
+                            drive: cert.drive,
+                            wipeMode: cert.wipe_mode,
+                            user: username,
+                            complianceStandard: "NIST 800-88, DoD 5220.22-M",
+                            userId: currentUserId,
+                          });
+                          
+                          await invoke("download_certificate", {
+                            content: auditCert,
+                            filename: `audit_certificate_${cert.drive.replace(/[:\\\s]/g, '_')}_${Date.now()}.json`
+                          });
+                        } catch (err) {
+                          alert(`Error: ${err}`);
+                        }
+                      }}
+                    >
+                      Download Audit JSON
+                    </button>
+                  )}
+                  {cert.status === 'completed' && (
+                    <button 
+                      className="back-btn"
+                      onClick={async () => {
+                        try {
+                          await invoke("download_certificate_pdf", {
+                            drive: cert.drive,
+                            wipeMode: cert.wipe_mode,
+                            deviceId: cert.device_id,
+                            timestamp: cert.timestamp,
+                            hash: "[PROTECTED]",
+                            filename: `certificate_${cert.drive.replace(/[:\\\s]/g, '_')}_${cert.timestamp.replace(/[:\s]/g, '_')}.pdf`
+                          });
+                        } catch (err) {
+                          alert(`Error downloading certificate: ${err}`);
+                        }
+                      }}
+                    >
+                      Download PDF
+                    </button>
+                  )}
                 </div>
               </div>
               
