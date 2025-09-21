@@ -164,11 +164,7 @@ async fn verify_user_pin(
         .await
         .map_err(|_| "User not found".to_string())?;
 
-    if let Some(stored_pin) = record.confirmation_pin {
-        Ok(stored_pin.trim() == pin.trim())
-    } else {
-        Ok(false)
-    }
+    Ok(record.confirmation_pin.trim() == pin.trim())
 }
 
 #[command]
@@ -217,7 +213,7 @@ async fn login_user(
                     user_id: user_record.id,
                     username: user_record.username,
                     email: user_record.email,
-                    confirmation_pin: user_record.confirmation_pin.unwrap_or_default(),
+                    confirmation_pin: user_record.confirmation_pin,
                 })
             } else {
                 Err("Invalid credentials".to_string())
