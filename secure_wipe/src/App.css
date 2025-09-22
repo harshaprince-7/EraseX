@@ -122,7 +122,10 @@ body::before {
 
 /* Sophisticated Sidebar */
 .sidebar {
-  margin-top: 50px;
+  position: fixed;
+  top: 50px;
+  left: 0;
+  bottom: 0;
   width: 240px;
   background: var(--glass-bg);
   backdrop-filter: var(--backdrop-blur);
@@ -132,9 +135,8 @@ body::before {
   flex-direction: column;
   gap: 1rem;
   box-shadow: var(--shadow-light);
-  position: relative;
-  overflow: hidden;
-  z-index: 10;
+  overflow-y: auto;
+  z-index: 100;
 }
 
 .sidebar::before {
@@ -371,7 +373,7 @@ body::before {
 
 /* Main Content Area */
 .content {
-  flex: 1;
+  margin-left: 240px;
   margin-top: 50px;
   padding: 1.5rem;
   display: flex;
@@ -379,6 +381,7 @@ body::before {
   align-items: flex-start;
   position: relative;
   min-height: calc(100vh - 110px);
+  width: calc(100vw - 240px);
   z-index: 10;
 }
 
@@ -4558,4 +4561,170 @@ body::before {
 
 .cancel-btn:active {
   transform: scale(0.98);
+}
+/* Exception List Styles */
+.exception-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.add-exception {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.add-exception input {
+  flex: 1;
+  padding: 0.8rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--backdrop-blur);
+  color: white;
+  font-size: 0.95rem;
+  outline: none;
+  transition: var(--transition-smooth);
+}
+
+.add-exception input:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 15px rgba(102, 126, 234, 0.3);
+}
+
+.add-exception input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: var(--secondary-gradient);
+  color: white;
+  border: none;
+  padding: 0.8rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+  font-size: 0.95rem;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: var(--shadow-light);
+}
+
+.btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.exception-list {
+  margin-top: 1rem;
+}
+
+.exception-list p {
+  color: white;
+  font-weight: 600;
+  margin-bottom: 0.8rem;
+}
+
+.exception-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.exception-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.8rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  transition: var(--transition-smooth);
+}
+
+.exception-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateX(5px);
+}
+
+.exception-item span {
+  color: white;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  flex: 1;
+}
+
+.remove-exception {
+  background: var(--danger-gradient);
+  color: white;
+  border: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition-smooth);
+}
+
+.remove-exception:hover:not(:disabled) {
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
+}
+
+.remove-exception:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Status colors for skipped devices */
+.text-orange-400 { 
+  color: #fb923c; 
+}
+
+/* Theme-specific exception list styling */
+.theme-rose-cream .exception-item span,
+.theme-rose-cream .exception-list p {
+  color: #4a5568 !important;
+}
+
+.theme-ice-blue-white .exception-item span,
+.theme-ice-blue-white .exception-list p {
+  color: #1e3a8a !important;
+}
+
+.theme-rose-cream .btn-secondary {
+  background: linear-gradient(135d, #e11d48 0%, #be123c 100%) !important;
+}
+
+.theme-ice-blue-white .btn-secondary {
+  background: linear-gradient(135deg, #0284c7 0%, #1e40af 100%) !important;
+}
+
+/* Responsive design for exception list */
+@media (max-width: 768px) {
+  .add-exception {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .exception-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  .remove-exception {
+    align-self: flex-end;
+  }
 }

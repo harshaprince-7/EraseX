@@ -22,6 +22,7 @@ pub struct PxeConfig {
     pub dns_server: String,
     pub wipe_mode: String,
     pub auto_shutdown: bool,
+    pub exception_list: Vec<String>, // MAC addresses or IP addresses to exclude
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -138,6 +139,7 @@ LABEL secure_wipe
 }
 
 fn create_wipe_script(pxe_dir: &str, config: &PxeConfig) -> Result<(), String> {
+    let exception_list = config.exception_list.join(" ");
     let wipe_script = format!(
         r#"#!/bin/bash
 # Secure Wipe Script - PXE Boot Version
@@ -145,11 +147,26 @@ fn create_wipe_script(pxe_dir: &str, config: &PxeConfig) -> Result<(), String> {
 SERVER_IP="{}"
 WIPE_MODE="{}"
 AUTO_SHUTDOWN={}
+EXCEPTION_LIST="{}"
 
 # Get system information
 MAC_ADDR=$(cat /sys/class/net/*/address | head -n1)
 IP_ADDR=$(hostname -I | awk '{{print $1}}')
 HOSTNAME=$(hostname)
+
+# Check if this device is in exception list
+for EXCEPTION in $EXCEPTION_LIST; do
+    if [[ "$MAC_ADDR" == "$EXCEPTION" ]] || [[ "$IP_ADDR" == "$EXCEPTION" ]] || [[ "$HOSTNAME" == "$EXCEPTION" ]]; then
+        echo "Device $MAC_ADDR ($IP_ADDR) is in exception list - skipping wipe"
+        curl -X POST "http://$SERVER_IP:8080/status" \
+            -H "Content-Type: application/json" \
+            -d '{{"mac":"'$MAC_ADDR'","ip":"'$IP_ADDR'","status":"skipped","progress":100}}'
+        echo "This device is protected from wiping. Shutting down..."
+        sleep 5
+        shutdown -h now
+        exit 0
+    fi
+done
 
 # Report boot status
 curl -X POST "http://$SERVER_IP:8080/status" \
@@ -239,7 +256,7 @@ else
     shutdown -h now
 fi
 "#,
-        config.server_ip, config.wipe_mode, config.auto_shutdown
+        config.server_ip, config.wipe_mode, config.auto_shutdown, exception_list
     );
 
     let script_path = format!("{}/wipe_script.sh", pxe_dir);

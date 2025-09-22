@@ -71,7 +71,9 @@ function App() {
   const [sensitiveFiles, setSensitiveFiles] = useState<string[]>([]);
   const [showSensitiveFilesModal, setShowSensitiveFilesModal] = useState(false);
   const [pinAttempts, setPinAttempts] = useState(0);
-  const [filesLocked, setFilesLocked] = useState(false); 
+  const [filesLocked, setFilesLocked] = useState(false);
+  const [showRegistrationPinModal, setShowRegistrationPinModal] = useState(false);
+  const [registrationPin, setRegistrationPin] = useState(""); 
   // page navigation
   const [currentPage, setCurrentPage] = useState<
     "home" | "dashboard" | "certificates" | "sensitive-files" | "bootable"
@@ -275,7 +277,8 @@ function App() {
     setEmail(user.email);
     setCurrentUserId(user.id);
     setUserPin(pin);
-    alert(`🎉 Your PIN: ${pin}`);
+    setRegistrationPin(pin);
+    setShowRegistrationPinModal(true);
     setAuthState("authenticated");
   };
 
@@ -1484,6 +1487,25 @@ function App() {
 
             <div className="modal-actions">
               <button className={`modal-close-btn theme-${theme}`} onClick={() => setShowHelpModal(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Registration PIN Modal */}
+      {showRegistrationPinModal && (
+        <div className="modal">
+          <div className="modal-content">
+            <h2>🎉 Registration Successful!</h2>
+            <div className="pin-display-large">
+              <strong>{registrationPin}</strong>
+            </div>
+            <p className="pin-warning">⚠️ Please save this PIN securely. You'll need it for wipe confirmations and security operations.</p>
+            <div className="modal-actions">
+              <button onClick={() => {
+                setShowRegistrationPinModal(false);
+                setRegistrationPin("");
+              }}>Got it!</button>
             </div>
           </div>
         </div>

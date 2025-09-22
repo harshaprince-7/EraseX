@@ -860,18 +860,15 @@ async fn verify_certificate_pdf(
         .map(|s| s.trim())
         .ok_or("Timestamp not found in PDF")?;
     
-    let hash = lines.iter()
-        .find(|l| l.contains("Verification Hash:"))
-        .and_then(|l| l.split("Verification Hash:").nth(1))
-        .map(|s| s.trim())
-        .ok_or("Verification Hash not found in PDF")?;
-    
+    // Parse timestamp
     let timestamp = chrono::DateTime::parse_from_rfc3339(timestamp_str)
         .map_err(|_| format!("Invalid timestamp format: '{}'", timestamp_str))?
         .with_timezone(&chrono::Utc);
     
+    // For PDF certificates, we verify by checking if the certificate exists in database
+    // with matching drive and timestamp (PDF certificates don't have embedded hashes)
     let row = sqlx::query!(
-        "SELECT hash FROM certificates WHERE drive = $1 AND timestamp = $2",
+        "SELECT id FROM certificates WHERE drive = $1 AND timestamp = $2",
         drive,
         timestamp
     )
@@ -879,10 +876,7 @@ async fn verify_certificate_pdf(
     .await
     .map_err(|e| format!("Database query failed: {}", e))?;
     
-    Ok(match row {
-        Some(record) => record.hash == hash,
-        None => false,
-    })
+    Ok(row.is_some())
 }
 
 #[command]

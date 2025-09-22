@@ -11,6 +11,7 @@ interface PxeConfig {
   dns_server: string;
   wipe_mode: string;
   auto_shutdown: boolean;
+  exception_list: string[];
 }
 
 interface ClientStatus {
@@ -36,12 +37,14 @@ export default function PxeBootModal({ isOpen, onClose }: PxeBootModalProps) {
     dns_server: "8.8.8.8",
     wipe_mode: "Quick",
     auto_shutdown: true,
+    exception_list: [],
   });
 
   const [isServerRunning, setIsServerRunning] = useState(false);
   const [clients, setClients] = useState<ClientStatus[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [newException, setNewException] = useState("");
 
   useEffect(() => {
     if (isServerRunning) {
@@ -109,6 +112,7 @@ export default function PxeBootModal({ isOpen, onClose }: PxeBootModalProps) {
       case "wiping": return "text-yellow-400";
       case "completed": return "text-green-400";
       case "failed": return "text-red-400";
+      case "skipped": return "text-orange-400";
       default: return "text-gray-400";
     }
   };
@@ -119,6 +123,7 @@ export default function PxeBootModal({ isOpen, onClose }: PxeBootModalProps) {
       case "wiping": return "🔥";
       case "completed": return "✅";
       case "failed": return "❌";
+      case "skipped": return "🛡️";
       default: return "⏳";
     }
   };
@@ -215,6 +220,58 @@ export default function PxeBootModal({ isOpen, onClose }: PxeBootModalProps) {
             </div>
           </div>
 
+          {/* Exception List */}
+          <div className="pxe-section">
+            <h3><Shield size={18} /> Exception List (Protected Devices)</h3>
+            
+            <div className="exception-controls">
+              <div className="add-exception">
+                <input
+                  type="text"
+                  value={newException}
+                  onChange={(e) => setNewException(e.target.value)}
+                  placeholder="MAC address, IP address, or hostname"
+                  disabled={isServerRunning}
+                />
+                <button
+                  onClick={() => {
+                    if (newException.trim() && !config.exception_list.includes(newException.trim())) {
+                      setConfig({...config, exception_list: [...config.exception_list, newException.trim()]});
+                      setNewException("");
+                    }
+                  }}
+                  disabled={isServerRunning || !newException.trim()}
+                  className="btn-secondary"
+                >
+                  Add Exception
+                </button>
+              </div>
+              
+              {config.exception_list.length > 0 && (
+                <div className="exception-list">
+                  <p><strong>Protected devices ({config.exception_list.length}):</strong></p>
+                  <div className="exception-items">
+                    {config.exception_list.map((exception, index) => (
+                      <div key={index} className="exception-item">
+                        <span>{exception}</span>
+                        <button
+                          onClick={() => {
+                            const newList = config.exception_list.filter((_, i) => i !== index);
+                            setConfig({...config, exception_list: newList});
+                          }}
+                          disabled={isServerRunning}
+                          className="remove-exception"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Server Control */}
           <div className="pxe-section">
             <h3><Shield size={18} /> Server Control</h3>
@@ -281,26 +338,28 @@ export default function PxeBootModal({ isOpen, onClose }: PxeBootModalProps) {
                     <span>IP Address</span>
                     <span>Status</span>
                     <span>Progress</span>
-                    <span>Last Update</span>
                   </div>
                   
                   {clients.map((client, index) => (
                     <div key={index} className="table-row">
                       <span className="mac-address">{client.mac_address}</span>
-                      <span>{client.ip_address}</span>
+                      <span className="ip-address">{client.ip_address}</span>
                       <span className={`status ${getStatusColor(client.status)}`}>
                         {getStatusIcon(client.status)} {client.status}
                       </span>
-                      <span>
-                        <div className="progress-bar">
-                          <div 
-                            className="progress-fill" 
-                            style={{width: `${client.progress}%`}}
-                          ></div>
-                          <span className="progress-text">{client.progress}%</span>
-                        </div>
+                      <span className="progress">
+                        {client.status === "wiping" ? (
+                          <div className="progress-bar">
+                            <div 
+                              className="progress-fill" 
+                              style={{width: `${client.progress}%`}}
+                            ></div>
+                            <span className="progress-text">{client.progress}%</span>
+                          </div>
+                        ) : (
+                          `${client.progress}%`
+                        )}
                       </span>
-                      <span className="timestamp">{client.timestamp}</span>
                     </div>
                   ))}
                 </div>
@@ -310,7 +369,7 @@ export default function PxeBootModal({ isOpen, onClose }: PxeBootModalProps) {
 
           {error && (
             <div className="error-message">
-              ❌ {error}
+              <p>{error}</p>
             </div>
           )}
         </div>

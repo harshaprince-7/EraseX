@@ -812,6 +812,7 @@ pub async fn hybrid_crypto_erase(selected_usb: String) -> Result<String, String>
                 let set_pass = Command::new("hdparm")
                     .args(&["--user-master", "u", "--security-set-pass", "p", &format!("/dev/{}", device_name)])
                     .output()
+
                     .map_err(|e| format!("Failed to set security password: {}", e))?;
                 
                 if !set_pass.status.success() {
