@@ -1065,6 +1065,7 @@ fn is_valid_ip(ip: &str) -> bool {
     ip.parse::<std::net::Ipv4Addr>().is_ok()
 }
 
+#[allow(dead_code)]
 fn is_server_accessible(ip: &str) -> bool {
     // Simple ping test
     let output = if OS == "windows" {

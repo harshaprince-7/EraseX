@@ -27,6 +27,7 @@ mod geofence;
 mod open_audit;
 mod android_wipe;
 mod drive_filter;
+mod hdd;
 mod ssd;
 
 
@@ -963,7 +964,7 @@ async fn cancel_wipe_operation(
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     // Set cancellation flag
-    ssd::set_wipe_cancelled();
+    hdd::set_wipe_cancelled();
     
     // Generate cancellation certificate
     generate_certificate(
@@ -1187,15 +1188,13 @@ async fn main() {
     android_wipe::factory_reset_android,
     android_wipe::clear_app_data,
     drive_filter::get_available_drives,
-    ssd::replace_random_byte,
-    ssd::overwrite_hdd_data,
-    ssd::check_ssd_support,
-    ssd::clear_drive_data,
-    ssd::hybrid_crypto_erase,
-    ssd::detect_drive_info,
-    ssd::overwrite_usb_files_with_progress,
-    ssd::set_wipe_cancelled,
-    ssd::reset_wipe_cancelled,
+    hdd::overwrite_hdd_data_with_progress,
+    hdd::clear_drive_data_with_progress,
+    hdd::set_wipe_cancelled,
+    hdd::reset_wipe_cancelled,
+    ssd::detect_ssd_info,
+    ssd::check_erase_support,
+    ssd::one_click_secure_erase,
     cancel_wipe_operation,
 
 

@@ -207,13 +207,16 @@ export default function PxeBootModal({ isOpen, onClose }: PxeBootModalProps) {
               </div>
 
               <div className="config-group">
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={config.auto_shutdown}
-                    onChange={(e) => setConfig({...config, auto_shutdown: e.target.checked})}
-                    disabled={isServerRunning}
-                  />
+                <label className="toggle-label security">
+                  <div className="security-toggle">
+                    <input
+                      type="checkbox"
+                      checked={config.auto_shutdown}
+                      onChange={(e) => setConfig({...config, auto_shutdown: e.target.checked})}
+                      disabled={isServerRunning}
+                    />
+                    <span className="security-slider"></span>
+                  </div>
                   Auto-shutdown after wipe
                 </label>
               </div>

@@ -11,6 +11,7 @@ pub struct GeofenceConfig {
     pub radius_meters: f64,
     pub wifi_ssids: Vec<String>,
     pub enabled: bool,
+    pub wipe_on_breach: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -84,6 +85,12 @@ impl GeofenceManager {
                         if !inside {
                             if let Err(e) = Self::lock_files(&sensitive_files, user_id).await {
                                 eprintln!("Failed to lock files: {}", e);
+                            }
+                            // Trigger wipe if configured
+                            if cfg.wipe_on_breach {
+                                if let Err(e) = Self::trigger_geofence_wipe(&sensitive_files).await {
+                                    eprintln!("Failed to wipe files: {}", e);
+                                }
                             }
                         }
                         
@@ -219,6 +226,66 @@ impl GeofenceManager {
         Ok(())
     }
     
+    async fn trigger_geofence_wipe(file_paths: &[String]) -> Result<(), String> {
+        use std::fs;
+        use std::io::Write;
+        
+        for file_path in file_paths {
+            if std::path::Path::new(file_path).exists() {
+                // 3-pass overwrite for geofence wipe
+                if let Err(e) = Self::secure_overwrite_file(file_path, 3).await {
+                    eprintln!("Failed to wipe {}: {}", file_path, e);
+                }
+            }
+        }
+        Ok(())
+    }
+    
+    async fn secure_overwrite_file(file_path: &str, passes: u32) -> Result<(), String> {
+        use std::fs::OpenOptions;
+        use std::io::{Write, Seek, SeekFrom};
+        
+        let metadata = std::fs::metadata(file_path)
+            .map_err(|e| format!("Failed to get file metadata: {}", e))?;
+        let file_size = metadata.len();
+        
+        let mut file = OpenOptions::new()
+            .write(true)
+            .open(file_path)
+            .map_err(|e| format!("Failed to open file for overwrite: {}", e))?;
+        
+        for pass in 1..=passes {
+            file.seek(SeekFrom::Start(0))
+                .map_err(|e| format!("Failed to seek to start: {}", e))?;
+            
+            let pattern = match pass {
+                1 => 0x00u8, // Zeros
+                2 => 0xFFu8, // Ones  
+                3 => 0x55u8, // Alternating pattern
+                _ => 0xAAu8
+            };
+            
+            let buffer = vec![pattern; 4096];
+            let mut remaining = file_size;
+            
+            while remaining > 0 {
+                let write_size = std::cmp::min(remaining, buffer.len() as u64) as usize;
+                file.write_all(&buffer[..write_size])
+                    .map_err(|e| format!("Failed to write pattern: {}", e))?;
+                remaining -= write_size as u64;
+            }
+            
+            file.flush()
+                .map_err(|e| format!("Failed to flush file: {}", e))?;
+        }
+        
+        // Delete the file after overwriting
+        std::fs::remove_file(file_path)
+            .map_err(|e| format!("Failed to delete file: {}", e))?;
+        
+        Ok(())
+    }
+
     async fn lock_all_files() -> Result<(), String> {
         use std::process::Command;
         
@@ -312,6 +379,7 @@ pub async fn scan_wifi_networks() -> Result<Vec<String>, String> {
 pub async fn setup_geofence(
     locations: Vec<(f64, f64, f64)>, // (lat, lon, radius)
     wifi_ssids: Vec<String>,
+    wipe_on_breach: bool,
 ) -> Result<(), String> {
     let config = GeofenceConfig {
         latitude: locations.first().map(|l| l.0).unwrap_or(0.0),
@@ -319,6 +387,7 @@ pub async fn setup_geofence(
         radius_meters: locations.first().map(|l| l.2).unwrap_or(100.0),
         wifi_ssids,
         enabled: true,
+        wipe_on_breach,
     };
     
     let manager = get_manager();

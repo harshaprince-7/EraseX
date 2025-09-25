@@ -564,6 +564,7 @@ fn build_final_iso(work_dir: &str, output_path: &str) -> Result<String, String> 
 }
 
 #[command]
+#[allow(dead_code)]
 pub fn create_iso() -> Result<String, String> {
     // Legacy function - redirect to new implementation
     Ok("Use create_complete_iso for full functionality".to_string())

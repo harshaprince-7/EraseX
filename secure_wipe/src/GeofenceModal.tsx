@@ -26,6 +26,7 @@ const GeofenceModal: React.FC<GeofenceModalProps> = ({ isOpen, onClose, sensitiv
   const [status, setStatus] = useState<LocationStatus | null>(null);
   const [unlockPin, setUnlockPin] = useState('');
   const [showUnlock, setShowUnlock] = useState(false);
+  const [wipeOnBreach, setWipeOnBreach] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -106,7 +107,8 @@ const GeofenceModal: React.FC<GeofenceModalProps> = ({ isOpen, onClose, sensitiv
       
       await invoke('setup_geofence', {
         locations: locationData,
-        wifiSsids: selectedWiFi
+        wifiSsids: selectedWiFi,
+        wipeOnBreach
       });
 
       // Start monitoring with selected sensitive files
@@ -180,7 +182,7 @@ const GeofenceModal: React.FC<GeofenceModalProps> = ({ isOpen, onClose, sensitiv
         <h2>🗺️ Geofenced Lock Setup</h2>
         
         {showUnlock && (
-          <div className="unlock-section" style={{ background: '#ffe6e6', padding: '15px', marginBottom: '20px', borderRadius: '8px' }}>
+          <div className="unlock-section">
             <h3>🔒 Files are currently LOCKED</h3>
             <p>Enter your PIN to unlock sensitive files:</p>
             <input
@@ -254,16 +256,36 @@ const GeofenceModal: React.FC<GeofenceModalProps> = ({ isOpen, onClose, sensitiv
           <div className="wifi-list">
             {availableWiFi.map((ssid, index) => (
               <label key={index} className="wifi-item">
-                <input
-                  type="checkbox"
-                  checked={selectedWiFi.includes(ssid)}
-                  onChange={() => toggleWiFi(ssid)}
-                />
-                <span className="wifi-name">📶 {ssid}</span>
+                <div className="wifi-toggle">
+                  <input
+                    type="checkbox"
+                    checked={selectedWiFi.includes(ssid)}
+                    onChange={() => toggleWiFi(ssid)}
+                  />
+                  <span className="wifi-slider"></span>
+                </div>
+                <span className="wifi-name">{ssid}</span>
               </label>
             ))}
           </div>
           <p style={{ fontSize: '0.9rem', color: '#888', marginTop: '5px' }}>Selected: {selectedWiFi.length} networks</p>
+        </div>
+
+        <div className="auto-wipe-section">
+          <label className="toggle-label danger">
+            <div className="danger-toggle">
+              <input
+                type="checkbox"
+                checked={wipeOnBreach}
+                onChange={(e) => setWipeOnBreach(e.target.checked)}
+              />
+              <span className="danger-slider"></span>
+            </div>
+            <span><strong>AUTO-WIPE FILES</strong> when outside geofence (IRREVERSIBLE)</span>
+          </label>
+          <div className="geofence-wipe-warning">
+            Files will be permanently deleted with 3-pass overwrite if device leaves safe area
+          </div>
         </div>
 
         {status && (
@@ -303,6 +325,7 @@ const GeofenceModal: React.FC<GeofenceModalProps> = ({ isOpen, onClose, sensitiv
             <li>⚠️ Files lock if either Wi-Fi OR GPS fails</li>
             <li>🛡️ Files stay locked if location services disabled</li>
             <li>🔑 Only your PIN unlocks files</li>
+            <li>🔥 Optional: WIPE files when outside geofence (irreversible)</li>
           </ul>
         </div>
       </div>
@@ -311,3 +334,4 @@ const GeofenceModal: React.FC<GeofenceModalProps> = ({ isOpen, onClose, sensitiv
 };
 
 export default GeofenceModal;
+        

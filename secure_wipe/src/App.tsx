@@ -804,7 +804,7 @@ function App() {
           <div className="modal-content">
             <h2>Select Random Wipe Method</h2>
             <div className="random-wipe-methods">
-              {["Single Pass", "3 Pass DDOD", "7 Pass", "Gutmann"].map(
+              {["Single Pass", "3 Pass DDOD", "7 Pass"].map(
                 (method) => (
                   <button
                     key={method}
