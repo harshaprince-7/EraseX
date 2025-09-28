@@ -3,18 +3,20 @@ use std::fs;
 use std::path::Path;
 use std::env::consts::OS;
 use tauri::command;
-use reqwest;
-use tokio::runtime::Runtime;
+
 
 #[command]
 pub async fn create_complete_iso(wipe_mode: String, output_path: String) -> Result<String, String> {
     println!("Creating complete bootable ISO with Alpine Linux...");
     
-    // Download Alpine Linux
-    let _alpine_iso = download_alpine_linux().await?;
+    // Use bundled Alpine Linux
+    let alpine_archive = download_alpine_linux().await?;
     
     // Create complete bootable environment
     let work_dir = build_bootable_environment(&wipe_mode).await?;
+    
+    // Extract bundled Alpine to work directory
+    extract_alpine_iso(&alpine_archive, &work_dir)?;
     
     // Build final ISO
     let iso_path = build_final_iso(&work_dir, &output_path)?;
@@ -32,9 +34,9 @@ pub async fn build_bootable_environment(wipe_mode: &str) -> Result<String, Strin
     }
     fs::create_dir_all(work_dir).map_err(|e| format!("Failed to create work dir: {}", e))?;
     
-    // Download and extract Alpine Linux
-    let alpine_iso = download_alpine_linux().await?;
-    extract_alpine_iso(&alpine_iso, work_dir)?;
+    // Use bundled Alpine Linux
+    let alpine_archive = download_alpine_linux().await?;
+    extract_alpine_iso(&alpine_archive, work_dir)?;
     
     // Create custom init system
     create_custom_init(work_dir, wipe_mode)?;
@@ -50,28 +52,18 @@ pub async fn build_bootable_environment(wipe_mode: &str) -> Result<String, Strin
 }
 
 async fn download_alpine_linux() -> Result<String, String> {
-    let alpine_version = "3.18";
-    let alpine_url = format!("https://dl-cdn.alpinelinux.org/alpine/v{}/releases/x86_64/alpine-standard-{}.0-x86_64.iso", alpine_version, alpine_version);
-    let alpine_path = "alpine-linux.iso";
+    let alpine_path = "alpine-nvme.tar.gz";
+    
+    // Use bundled Alpine environment first
+    let alpine_data = include_bytes!("../assets/alpine-nvme.tar.gz");
     
     if !Path::new(alpine_path).exists() {
-        println!("Downloading Alpine Linux ({}MB)...", "~150");
+        println!("Using bundled Alpine Linux environment...");
         
-        let rt = Runtime::new().map_err(|e| format!("Runtime error: {}", e))?;
-        rt.block_on(async {
-            let response = reqwest::get(&alpine_url).await
-                .map_err(|e| format!("Download failed: {}", e))?;
-            
-            let bytes = response.bytes().await
-                .map_err(|e| format!("Failed to read data: {}", e))?;
-            
-            fs::write(alpine_path, &bytes)
-                .map_err(|e| format!("Failed to save Alpine: {}", e))?;
-            
-            Ok::<(), String>(())
-        })?;
+        fs::write(alpine_path, alpine_data)
+            .map_err(|e| format!("Failed to write bundled Alpine: {}", e))?;
         
-        println!("✅ Alpine Linux downloaded");
+        println!("✅ Bundled Alpine Linux ready");
     } else {
         println!("✅ Alpine Linux already available");
     }
@@ -79,43 +71,28 @@ async fn download_alpine_linux() -> Result<String, String> {
     Ok(alpine_path.to_string())
 }
 
-fn extract_alpine_iso(iso_path: &str, work_dir: &str) -> Result<(), String> {
-    println!("Extracting Alpine Linux ISO...");
+fn extract_alpine_iso(archive_path: &str, work_dir: &str) -> Result<(), String> {
+    println!("Extracting Alpine Linux archive...");
     
     if OS == "windows" {
-        // Use 7zip or PowerShell
-        let ps_script = format!(
-            "Mount-DiskImage -ImagePath '{}' -PassThru | Get-Volume | ForEach-Object {{ $src = $_.DriveLetter + ':\\*'; Copy-Item -Path $src -Destination '{}' -Recurse -Force }}",
-            Path::new(iso_path).canonicalize().unwrap().display(),
-            Path::new(work_dir).canonicalize().unwrap().display()
-        );
-        
-        Command::new("powershell")
-            .args(&["-Command", &ps_script])
-            .status()
-            .map_err(|e| format!("Failed to extract ISO: {}", e))?;
+        // Use tar for .tar.gz
+        let extract_result = Command::new("tar")
+            .args(&["-xzf", archive_path, "-C", work_dir])
+            .status();
+            
+        if extract_result.is_err() {
+            // Fallback: Try 7zip if available
+            Command::new("7z")
+                .args(&["x", archive_path, &format!("-o{}", work_dir)])
+                .status()
+                .map_err(|e| format!("Failed to extract archive: {}. Install tar or 7zip.", e))?;
+        }
     } else {
-        // Use mount or 7z on Linux
-        let mount_point = "/tmp/alpine_mount";
-        fs::create_dir_all(mount_point).map_err(|e| format!("Failed to create mount point: {}", e))?;
-        
-        // Mount ISO
-        Command::new("mount")
-            .args(&["-o", "loop", iso_path, mount_point])
+        // Use tar on Linux
+        Command::new("tar")
+            .args(&["-xzf", archive_path, "-C", work_dir])
             .status()
-            .map_err(|e| format!("Failed to mount ISO: {}", e))?;
-        
-        // Copy contents
-        Command::new("cp")
-            .args(&["-r", &format!("{}/*", mount_point), work_dir])
-            .status()
-            .map_err(|e| format!("Failed to copy files: {}", e))?;
-        
-        // Unmount
-        Command::new("umount")
-            .arg(mount_point)
-            .status()
-            .map_err(|e| format!("Failed to unmount: {}", e))?;
+            .map_err(|e| format!("Failed to extract archive: {}", e))?;
     }
     
     println!("✅ Alpine Linux extracted");

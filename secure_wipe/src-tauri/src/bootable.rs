@@ -3,8 +3,7 @@ use std::env::consts::OS;
 use std::fs;
 use std::path::Path;
 use tauri::command;
-use reqwest;
-use tokio::runtime::Runtime;
+
 
 #[command]
 pub async fn create_bootable_usb(usb_drive: String, wipe_mode: String) -> Result<String, String> {
@@ -23,36 +22,25 @@ pub async fn create_bootable_usb(usb_drive: String, wipe_mode: String) -> Result
 }
 
 async fn download_bootloader_files() -> Result<(), String> {
-    let files_to_download = vec![
-        ("https://boot.alpinelinux.org/alpine-3.18/x86_64/isolinux.bin", "isolinux.bin"),
-        ("https://boot.alpinelinux.org/alpine-3.18/x86_64/ldlinux.c32", "ldlinux.c32"),
-        ("https://boot.alpinelinux.org/alpine-3.18/x86_64/libcom32.c32", "libcom32.c32"),
-        ("https://boot.alpinelinux.org/alpine-3.18/x86_64/libutil.c32", "libutil.c32"),
-        ("https://boot.alpinelinux.org/alpine-3.18/x86_64/menu.c32", "menu.c32"),
-        ("https://dl-cdn.alpinelinux.org/alpine/v3.18/releases/x86_64/alpine-minirootfs-3.18.0-x86_64.tar.gz", "alpine-minirootfs.tar.gz"),
-        ("https://dl-cdn.alpinelinux.org/alpine/v3.18/main/x86_64/linux-lts-6.1.38-r1.apk", "linux-lts.apk"),
-    ];
-    
     fs::create_dir_all("bootloader_files").map_err(|e| format!("Failed to create dir: {}", e))?;
     
-    for (url, filename) in files_to_download {
-        let filepath = format!("bootloader_files/{}", filename);
-        if !Path::new(&filepath).exists() {
-            println!("Downloading {}...", filename);
-            let rt = Runtime::new().map_err(|e| format!("Runtime error: {}", e))?;
-            rt.block_on(async {
-                let response = reqwest::get(url).await
-                    .map_err(|e| format!("Download failed for {}: {}", filename, e))?;
-                let bytes = response.bytes().await
-                    .map_err(|e| format!("Failed to read {}: {}", filename, e))?;
-                fs::write(&filepath, &bytes)
-                    .map_err(|e| format!("Failed to save {}: {}", filename, e))?;
-                Ok::<(), String>(())
-            })?;
-        }
+    // Use bundled Alpine environment
+    let alpine_data = include_bytes!("../assets/alpine-nvme.tar.gz");
+    let alpine_path = "bootloader_files/alpine-nvme.tar.gz";
+    
+    if !Path::new(alpine_path).exists() {
+        println!("Using bundled Alpine environment...");
+        fs::write(alpine_path, alpine_data)
+            .map_err(|e| format!("Failed to write bundled Alpine: {}", e))?;
     }
     
-    println!("✅ All bootloader files downloaded");
+    // Extract Alpine environment
+    Command::new("tar")
+        .args(&["-xzf", alpine_path, "-C", "bootloader_files"])
+        .status()
+        .map_err(|e| format!("Failed to extract Alpine: {}", e))?;
+    
+    println!("✅ Bundled Alpine environment ready");
     Ok(())
 }
 
@@ -122,11 +110,8 @@ async fn install_complete_system(usb_drive: &str, wipe_mode: &str) -> Result<(),
             .map_err(|e| format!("Failed to create {}: {}", dir, e))?;
     }
     
-    // Install bootloader files
-    install_bootloader(&mount_point)?;
-    
-    // Extract and install Alpine Linux
-    install_alpine_system(&mount_point).await?;
+    // Copy bundled Alpine environment
+    copy_alpine_environment(&mount_point)?;
     
     // Create custom init script
     create_wipe_script(&mount_point, wipe_mode)?;
@@ -142,6 +127,24 @@ async fn install_complete_system(usb_drive: &str, wipe_mode: &str) -> Result<(),
     }
     
     println!("✅ Complete system installed to USB");
+    Ok(())
+}
+
+fn copy_alpine_environment(mount_point: &str) -> Result<(), String> {
+    // Copy extracted Alpine files to USB
+    if Path::new("bootloader_files").exists() {
+        if OS == "windows" {
+            Command::new("xcopy")
+                .args(&["bootloader_files", &format!("{}\\alpine", mount_point), "/E", "/H", "/Y"])
+                .status()
+                .map_err(|e| format!("Failed to copy Alpine files: {}", e))?;
+        } else {
+            Command::new("cp")
+                .args(&["-r", "bootloader_files/*", &format!("{}/alpine/", mount_point)])
+                .status()
+                .map_err(|e| format!("Failed to copy Alpine files: {}", e))?;
+        }
+    }
     Ok(())
 }
 

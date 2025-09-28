@@ -46,4 +46,4 @@ rsa = { version = "0.9", features = ["sha2"] }
 base64 = "0.21"
 reqwest = { version = "0.11", features = ["json"] }
 image = "0.24"
-winapi = { version = "0.3", features = ["fileapi", "handleapi", "ioapiset", "winioctl", "winnt"] }
+winapi = { version = "0.3", features = ["fileapi", "handleapi", "ioapiset", "winioctl", "winnt", "processthreadsapi", "securitybaseapi"] }

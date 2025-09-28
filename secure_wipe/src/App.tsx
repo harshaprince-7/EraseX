@@ -91,7 +91,7 @@ function App() {
   const [isSsdDetected, setIsSsdDetected] = useState(false);
   const [showProgressModal, setShowProgressModal] = useState(false);
   const [progressMinimized, setProgressMinimized] = useState(false);
-  const [wipeProgress, setWipeProgress] = useState({ pass: 1, totalPasses: 7, progress: 0, bytesWritten: 0, totalBytes: 1 });
+  const [wipeProgress, setWipeProgress] = useState({ pass: 1, totalPasses: 3, progress: 0, bytesWritten: 0, totalBytes: 1 });
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancelPin, setCancelPin] = useState("");
   const [cancelError, setCancelError] = useState("");
@@ -376,7 +376,7 @@ function App() {
       
       if (isUsbDrive && (selectedWipe === "Destroy" || selectedWipe === "Purge")) {
         setShowProgressModal(true);
-        setWipeProgress({ pass: 1, totalPasses: selectedWipe === "Destroy" ? 7 : 1, progress: 0, bytesWritten: 0, totalBytes: 0 });
+        setWipeProgress({ pass: 1, totalPasses: selectedWipe === "Destroy" ? 3 : 1, progress: 0, bytesWritten: 0, totalBytes: 0 });
       }
 
       // Perform wipe operation on selected drives
@@ -395,7 +395,7 @@ function App() {
             if (driveType.includes("USB SSD") || drive.startsWith("F:")) {
               wipeResult = await invoke("overwrite_usb_files_with_progress", {
                 driveLetter: drive,
-                passes: 7
+                passes: 3
               });
             } else {
               wipeResult = await invoke("hybrid_crypto_erase", {
@@ -403,9 +403,17 @@ function App() {
               });
             }
           } else {
-            wipeResult = await invoke("replace_random_byte", {
-              method: selectedWipe === "Purge" ? selectedRandomMethod : selectedWipe,
-              selectedUsb: drive.replace(":", ""),
+            // Map frontend methods to backend
+            let backendMethod;
+            if (selectedWipe === "Purge") {
+              backendMethod = selectedRandomMethod === "Single Pass" ? "single" : "3";
+            } else {
+              backendMethod = selectedWipe;
+            }
+            
+            wipeResult = await invoke("overwrite_hdd_data_with_progress", {
+              method: backendMethod,
+              selectedDrive: drive.replace(":", ""),
             });
           }
           setErrorMessage(`✅ ${wipeResult}`);
@@ -804,7 +812,7 @@ function App() {
           <div className="modal-content">
             <h2>Select Random Wipe Method</h2>
             <div className="random-wipe-methods">
-              {["Single Pass", "3 Pass DDOD", "7 Pass"].map(
+              {["Single Pass", "3 Pass DDOD"].map(
                 (method) => (
                   <button
                     key={method}
@@ -1345,7 +1353,7 @@ function App() {
               <>
                 <div className="progress-container">
                   <div className="progress-info">
-                    <p>Pass {wipeProgress.pass || 1} of {wipeProgress.totalPasses || 7}</p>
+                    <p>Pass {wipeProgress.pass || 1} of {wipeProgress.totalPasses || 3}</p>
                     <p>{wipeProgress.progress || 0}% Complete</p>
                     <p>{Math.round((wipeProgress.bytesWritten || 0) / (1024 * 1024))} MB / {Math.round((wipeProgress.totalBytes || 1) / (1024 * 1024))} MB</p>
                   </div>

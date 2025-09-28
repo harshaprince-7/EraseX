@@ -1190,11 +1190,14 @@ async fn main() {
     drive_filter::get_available_drives,
     hdd::overwrite_hdd_data_with_progress,
     hdd::clear_drive_data_with_progress,
+    hdd::overwrite_usb_files_with_progress,
     hdd::set_wipe_cancelled,
     hdd::reset_wipe_cancelled,
     ssd::detect_ssd_info,
     ssd::check_erase_support,
     ssd::one_click_secure_erase,
+    ssd::hybrid_erase,
+    ssd::initiate_reboot,
     cancel_wipe_operation,
 
 

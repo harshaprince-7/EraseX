@@ -338,32 +338,231 @@ async fn launch_bundled_linux(drive_input: &str) -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
         use std::fs;
+        use std::path::Path;
         
-        // Extract bundled Linux ISO to temp
-        let iso_data = include_bytes!("../../../assets/secure_wipe_linux.iso");
-        let iso_path = "C:\\temp\\secure_wipe.iso";
+        // Create temp directory
+        fs::create_dir_all("C:\\temp").map_err(|e| format!("Failed to create temp dir: {}", e))?;
         
-        if fs::write(iso_path, iso_data).is_ok() {
-            // Mount ISO and boot
-            let mount_result = Command::new("powershell")
-                .args(&["-Command", &format!("Mount-DiskImage -ImagePath '{}'", iso_path)])
-                .output();
+        // Extract bundled Alpine Linux environment
+        let alpine_data = include_bytes!("../assets/alpine-nvme.tar.gz");
+        let temp_archive = "C:\\temp\\alpine-nvme.tar.gz";
+        let extract_dir = "C:\\temp\\alpine_extract";
+        
+        // Write archive to temp
+        fs::write(temp_archive, alpine_data)
+            .map_err(|e| format!("Failed to write archive: {}", e))?;
+        
+        // Extract using tar (requires Git Bash or WSL)
+        let extract_result = Command::new("tar")
+            .args(&["-xzf", temp_archive, "-C", "C:\\temp"])
+            .output();
             
-            if mount_result.is_ok() {
-                return Ok("Bundled Linux environment prepared. System will reboot automatically.".into());
-            }
+        if extract_result.is_err() {
+            // Fallback: Try PowerShell extraction
+            let ps_script = format!(
+                "Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('{}', '{}')",
+                temp_archive, extract_dir
+            );
+            
+            Command::new("powershell")
+                .args(&["-Command", &ps_script])
+                .output()
+                .map_err(|e| format!("Failed to extract archive: {}", e))?;
         }
+        
+        // Run wipe directly using extracted Alpine tools
+        run_extracted_alpine_wipe(drive_input, extract_dir).await
     }
     
-    Err("Bundled Linux environment not available".into())
+    #[cfg(target_os = "linux")]
+    {
+        // Direct extraction and execution on Linux
+        extract_and_run_alpine(drive_input).await
+    }
+    
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    Err("Bundled Linux environment not supported on this platform".into())
 }
 
 async fn prepare_linux_reboot(drive_input: String) -> Result<EraseResult, String> {
-    Ok(EraseResult {
-        success: false,
-        message: format!("Drive {} requires manual Linux boot. Download secure wipe ISO and reboot.", drive_input),
-        requires_reboot: true,
-    })
+    // Try to use bundled Alpine environment first
+    match launch_bundled_linux(&drive_input).await {
+        Ok(msg) => Ok(EraseResult {
+            success: true,
+            message: msg,
+            requires_reboot: false,
+        }),
+        Err(_) => Ok(EraseResult {
+            success: false,
+            message: format!("Drive {} requires bootable media. Use the 'Bootable USB/ISO' feature to create secure wipe media.", drive_input),
+            requires_reboot: true,
+        })
+    }
+}
+
+async fn run_extracted_alpine_wipe(drive_input: &str, _alpine_dir: &str) -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        // On Windows, suggest using the existing bootable creation method
+        Err("Use the dedicated Bootable USB/ISO feature for offline wiping. This provides a complete Alpine Linux environment.".into())
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        // On Linux, run the wipe directly
+        run_alpine_wipe(drive_input).await
+    }
+    
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    Err("Platform not supported".into())
+}
+
+async fn extract_and_run_alpine(drive_input: &str) -> Result<String, String> {
+    use std::fs;
+    
+    // Extract Alpine environment to /tmp
+    let alpine_data = include_bytes!("../assets/alpine-nvme.tar.gz");
+    let temp_archive = "/tmp/alpine-nvme.tar.gz";
+    
+    fs::write(temp_archive, alpine_data)
+        .map_err(|e| format!("Failed to write archive: {}", e))?;
+    
+    // Extract archive
+    Command::new("tar")
+        .args(&["-xzf", temp_archive, "-C", "/tmp"])
+        .status()
+        .map_err(|e| format!("Failed to extract: {}", e))?;
+    
+    // Run secure wipe directly
+    run_alpine_wipe(drive_input).await
+}
+
+
+
+#[cfg(target_os = "linux")]
+async fn run_alpine_wipe(drive_input: &str) -> Result<String, String> {
+    // Check if running as root
+    if unsafe { libc::geteuid() } != 0 {
+        return Err("Root privileges required for direct drive access".into());
+    }
+    
+    // Detect drive type and run appropriate wipe
+    let drive_path = format!("/dev/{}", drive_input);
+    
+    // Check if it's an SSD
+    let rotational_path = format!("/sys/block/{}/queue/rotational", drive_input);
+    let is_ssd = std::fs::read_to_string(&rotational_path)
+        .map(|content| content.trim() == "0")
+        .unwrap_or(false);
+    
+    if is_ssd {
+        // Try NVMe crypto erase first
+        let nvme_result = Command::new("nvme")
+            .args(&["format", &drive_path, "--ses=1", "--force"])
+            .output();
+        
+        if let Ok(output) = nvme_result {
+            if output.status.success() {
+                return Ok("SSD crypto-erase completed using NVMe command".into());
+            }
+        }
+        
+        // Fallback to ATA secure erase
+        let set_pass = Command::new("hdparm")
+            .args(&["--user-master", "u", "--security-set-pass", "p", &drive_path])
+            .output();
+        
+        if let Ok(_) = set_pass {
+            let erase = Command::new("hdparm")
+                .args(&["--user-master", "u", "--security-erase", "p", &drive_path])
+                .output();
+            
+            if let Ok(output) = erase {
+                if output.status.success() {
+                    return Ok("SSD secure erase completed using ATA command".into());
+                }
+            }
+        }
+        
+        return Err("SSD secure erase failed - tools not available".into());
+    } else {
+        // HDD - use multi-pass overwrite
+        let passes = [
+            ("zero", "/dev/zero"),
+            ("random", "/dev/urandom"),
+            ("zero", "/dev/zero"),
+        ];
+        
+        for (pass_name, source) in &passes {
+            println!("Running {} pass...", pass_name);
+            let result = Command::new("dd")
+                .args(&[&format!("if={}", source), &format!("of={}", drive_path), "bs=1M", "status=progress"])
+                .status();
+            
+            if result.is_err() {
+                return Err(format!("Failed during {} pass", pass_name));
+            }
+        }
+        
+        // Sync to ensure all data is written
+        Command::new("sync").status().ok();
+        
+        Ok("HDD multi-pass wipe completed (3 passes)".into())
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+async fn run_alpine_wipe(_drive_input: &str) -> Result<String, String> {
+    Err("Alpine wipe only available on Linux".into())
+}
+
+#[command]
+pub async fn detect_ssd_info(selected_usb: String) -> Result<String, String> {
+    let drive_path = if selected_usb.len() == 1 {
+        format!("/dev/sd{}", selected_usb.to_lowercase())
+    } else {
+        selected_usb
+    };
+    
+    #[cfg(target_os = "linux")]
+    {
+        let rotational_path = format!("/sys/block/{}/queue/rotational", drive_path.replace("/dev/", ""));
+        let is_ssd = std::fs::read_to_string(&rotational_path)
+            .map(|content| content.trim() == "0")
+            .unwrap_or(false);
+        
+        if is_ssd {
+            Ok("SSD detected - supports hardware crypto-erase".into())
+        } else {
+            Ok("HDD detected - will use multi-pass overwrite".into())
+        }
+    }
+    
+    #[cfg(not(target_os = "linux"))]
+    Ok("Drive type detection available on Linux only".into())
+}
+
+#[command]
+pub async fn check_erase_support() -> Result<String, String> {
+    let nvme_available = Command::new("which").arg("nvme").output()
+        .map_or(false, |out| out.status.success());
+    let hdparm_available = Command::new("which").arg("hdparm").output()
+        .map_or(false, |out| out.status.success());
+    
+    if nvme_available && hdparm_available {
+        Ok("Full SSD erase support available (nvme-cli + hdparm)".into())
+    } else if nvme_available {
+        Ok("NVMe erase support available".into())
+    } else if hdparm_available {
+        Ok("ATA secure erase support available".into())
+    } else {
+        Ok("No hardware erase tools available - install nvme-cli and hdparm".into())
+    }
+}
+
+#[command]
+pub async fn one_click_secure_erase(selected_usb: String) -> Result<String, String> {
+    hybrid_erase(selected_usb).await.map(|result| result.message)
 }
 
 #[command]
@@ -381,3 +580,4 @@ pub async fn initiate_reboot() -> Result<String, String> {
     #[cfg(not(target_os = "windows"))]
     Err("Reboot only supported on Windows".into())
 }
+
