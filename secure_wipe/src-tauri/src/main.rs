@@ -1196,8 +1196,7 @@ async fn main() {
     ssd::detect_ssd_info,
     ssd::check_erase_support,
     ssd::one_click_secure_erase,
-    ssd::hybrid_erase,
-    ssd::initiate_reboot,
+    ssd::alpine_ssd_erase,
     cancel_wipe_operation,
 
 

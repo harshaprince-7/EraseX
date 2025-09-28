@@ -1,7 +1,9 @@
 use tauri::command;
 use std::process::Command;
 use std::fs;
-use serde::Serialize;
+
+#[cfg(target_os = "linux")]
+extern crate libc;
 
 #[command]
 pub async fn alpine_ssd_erase(drive_input: String) -> Result<String, String> {
@@ -9,7 +11,7 @@ pub async fn alpine_ssd_erase(drive_input: String) -> Result<String, String> {
     extract_and_run_alpine_ssd(&drive_input).await
 }
 
-async fn extract_and_run_alpine_ssd(drive_input: &str) -> Result<String, String> {
+async fn extract_and_run_alpine_ssd(_drive_input: &str) -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
         // Extract Alpine environment on Windows
@@ -118,7 +120,7 @@ async fn run_alpine_ssd_wipe(_drive_input: &str) -> Result<String, String> {
 
 #[command]
 pub async fn detect_ssd_info(selected_usb: String) -> Result<String, String> {
-    let drive_name = if selected_usb.len() == 1 {
+    let _drive_name = if selected_usb.len() == 1 {
         format!("sd{}", selected_usb.to_lowercase())
     } else {
         selected_usb.replace("/dev/", "")
